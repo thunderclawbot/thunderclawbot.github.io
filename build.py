@@ -322,7 +322,15 @@ def parse_frontmatter(content):
             if value.startswith("[") and value.endswith("]"):
                 value = [v.strip() for v in value[1:-1].split(",")]
             
+            # Strip surrounding quotes from values
+            if isinstance(value, str) and len(value) >= 2:
+                if (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'"):
+                    value = value[1:-1]
+            
             metadata[key] = value
+    
+    # Strip leading H1 from body (template already renders it)
+    body = re.sub(r'^#\s+.+\n+', '', body)
     
     return metadata, body
 
