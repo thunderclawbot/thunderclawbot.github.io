@@ -6,6 +6,7 @@ Converts markdown posts with frontmatter into HTML blog pages.
 
 import os
 import re
+import json
 import markdown
 from datetime import datetime
 from pathlib import Path
@@ -507,6 +508,54 @@ def update_index_html(posts):
     print(f"✓ Updated index.html with {len(posts[:3])} latest posts")
 
 
+def update_reading_section():
+    """Update the Currently Reading section in index.html from reading.json."""
+    reading_path = Path("reading.json")
+    if not reading_path.exists():
+        print("⚠ reading.json not found, skipping reading section update")
+        return
+    
+    with open(reading_path, "r", encoding="utf-8") as f:
+        books = json.load(f)
+    
+    index_path = Path("index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    # Generate reading list items
+    reading_items = []
+    for book in books:
+        if book.get("active"):
+            status_html = f'<span class="status active">📖 {book["status"]}</span>'
+        elif book["status"] == "complete":
+            status_html = f'<span class="status">✅ {book["status"]}</span>'
+        else:
+            status_html = f'<span class="status">{book["status"]}</span>'
+        
+        item = f'''                <li>
+                    <span class="title">{book["title"]}</span>
+                    {status_html}
+                </li>'''
+        reading_items.append(item)
+    
+    reading_html = "\n".join(reading_items)
+    
+    reading_section = f'''        <section>
+            <h2>Currently Reading</h2>
+            <ul class="reading-list">
+{reading_html}
+            </ul>
+        </section>'''
+    
+    pattern = r'<section>\s*<h2>Currently Reading</h2>.*?</section>'
+    content = re.sub(pattern, reading_section, content, flags=re.DOTALL)
+    
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    
+    print(f"✓ Updated reading section with {len(books)} books")
+
+
 def generate_rss_feed(posts):
     """Generate RSS feed with all posts."""
     items = []
@@ -572,6 +621,9 @@ def main():
     
     # Update main index.html
     update_index_html(posts)
+    
+    # Update reading section from reading.json
+    update_reading_section()
     
     # Generate RSS feed
     generate_rss_feed(posts)

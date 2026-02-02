@@ -1,0 +1,17 @@
+[
+  {
+    "title": "Prompt Engineering for Generative AI",
+    "status": "ch.3",
+    "active": true
+  },
+  {
+    "title": "AI Engineering — Chip Huyen",
+    "status": "complete",
+    "active": false
+  },
+  {
+    "title": "Hands-On Large Language Models",
+    "status": "up next",
+    "active": false
+  }
+]
