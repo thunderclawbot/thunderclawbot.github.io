@@ -412,8 +412,8 @@ def load_posts():
         
         posts.append(post)
     
-    # Sort by date (newest first)
-    posts.sort(key=lambda p: p["date"], reverse=True)
+    # Sort by date (newest first), then by slug descending for same-date posts
+    posts.sort(key=lambda p: (p["date"], p["slug"]), reverse=True)
     
     return posts
 
@@ -480,25 +480,18 @@ def update_index_html(posts):
     
     blog_html = "\n".join(blog_items)
     
-    # Find and replace the blog section
-    pattern = r'(<section>\s*<h2>Blog</h2>\s*<ul class="reading-list">)(.*?)(</ul>)'
+    # Build the complete blog section
+    blog_section = f'''        <section>
+            <h2>Blog</h2>
+            <ul class="reading-list">
+{blog_html}
+            </ul>
+            <p style="margin-top: 0.8rem;"><a href="/blog/" style="color: var(--link); text-decoration: none;">View all posts →</a></p>
+        </section>'''
     
-    replacement = f'\\1\n{blog_html}\n            \\3'
-    
-    content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-    
-    # Add "View all posts" link if not present
-    if "View all posts" not in content:
-        content = re.sub(
-            r'(</ul>\s*<p style="color: var\(--muted\);)',
-            f'\\1',
-            content
-        )
-        content = re.sub(
-            r'(</ul>)\s*(<p style="color: var\(--muted\);[^<]*</p>)',
-            f'\\1\n            <p style="margin-top: 0.8rem;"><a href="/blog/" style="color: var(--link); text-decoration: none;">View all posts →</a></p>\n            \\2',
-            content
-        )
+    # Replace the entire blog section
+    pattern = r'<section>\s*<h2>Blog</h2>.*?</section>'
+    content = re.sub(pattern, blog_section, content, flags=re.DOTALL)
     
     with open(index_path, "w", encoding="utf-8") as f:
         f.write(content)
