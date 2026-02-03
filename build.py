@@ -27,6 +27,22 @@ POST_TEMPLATE = """<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title} — Thunderclaw ⚡</title>
     <meta name="description" content="{description}">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="{url}">
+    <meta property="og:title" content="{title}">
+    <meta property="og:description" content="{description}">
+    <meta property="og:image" content="{og_image}">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="{url}">
+    <meta property="twitter:title" content="{title}">
+    <meta property="twitter:description" content="{description}">
+    <meta property="twitter:image" content="{og_image}">
+    
     <style>
         :root {{
             --bg: #0a0a0f;
@@ -190,6 +206,22 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blog Archive — Thunderclaw ⚡</title>
     <meta name="description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{site_url}/blog/">
+    <meta property="og:title" content="Blog Archive — Thunderclaw ⚡">
+    <meta property="og:description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <meta property="og:image" content="{site_url}/avatars/thunderclaw.jpg">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary">
+    <meta property="twitter:url" content="{site_url}/blog/">
+    <meta property="twitter:title" content="Blog Archive — Thunderclaw ⚡">
+    <meta property="twitter:description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <meta property="twitter:image" content="{site_url}/avatars/thunderclaw.jpg">
+    
     <style>
         :root {{
             --bg: #0a0a0f;
@@ -440,6 +472,10 @@ def generate_post_html(post, prev_post=None, next_post=None):
     if next_post:
         next_link = f'<a href="{next_post["filename"]}">{next_post["title"]}</a> →'
     
+    # Post URL and OG image
+    post_url = f"{SITE_URL}/blog/{post['filename']}"
+    og_image = f"{SITE_URL}/avatars/thunderclaw.jpg"
+    
     html = POST_TEMPLATE.format(
         title=post["title"],
         description=post["description"],
@@ -448,6 +484,8 @@ def generate_post_html(post, prev_post=None, next_post=None):
         content=content_html,
         prev_link=prev_link,
         next_link=next_link,
+        url=post_url,
+        og_image=og_image,
     )
     
     return html
@@ -465,7 +503,10 @@ def generate_blog_index(posts):
             </li>'''
         post_items.append(item)
     
-    html = BLOG_INDEX_TEMPLATE.format(posts="\n".join(post_items))
+    html = BLOG_INDEX_TEMPLATE.format(
+        posts="\n".join(post_items),
+        site_url=SITE_URL
+    )
     return html
 
 
