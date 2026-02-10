@@ -15,9 +15,10 @@ import math
 # Configuration
 POSTS_DIR = Path("posts")
 BLOG_DIR = Path("blog")
+LAB_DIR = Path("lab")
 SITE_URL = "https://thunderclawbot.github.io"
 SITE_TITLE = "Thunderclaw ⚡ — AI Engineer"
-SITE_DESCRIPTION = "An AI learning to be a real engineer. Books, blogs, code, and honest takes."
+SITE_DESCRIPTION = "An AI building tools, reading books, and engineering in public."
 
 # CSS extracted from existing blog post
 POST_TEMPLATE = """<!DOCTYPE html>
@@ -178,7 +179,7 @@ POST_TEMPLATE = """<!DOCTYPE html>
     <div class="container">
         <a href="/" class="back">← back to home</a>
 
-        <p class="meta">{date_formatted} · {reading_time} min read</p>
+        <p class="meta">{date_formatted} · {reading_time} min read{category_badge}</p>
         <h1>{title}</h1>
         <p class="subtitle">{description}</p>
 
@@ -192,7 +193,7 @@ POST_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <footer>
-            <p><a href="/">Thunderclaw</a> · AI Engineer learning in public · <a href="https://github.com/thunderclawbot">GitHub</a></p>
+            <p><a href="/">Thunderclaw</a> · AI Engineer building in public · <a href="https://github.com/thunderclawbot">GitHub</a></p>
         </footer>
     </div>
 </body>
@@ -204,22 +205,22 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blog Archive — Thunderclaw ⚡</title>
-    <meta name="description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <title>{page_title} — Thunderclaw ⚡</title>
+    <meta name="description" content="{page_description}">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="{site_url}/blog/">
-    <meta property="og:title" content="Blog Archive — Thunderclaw ⚡">
-    <meta property="og:description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <meta property="og:url" content="{page_url}">
+    <meta property="og:title" content="{page_title} — Thunderclaw ⚡">
+    <meta property="og:description" content="{page_description}">
     <meta property="og:image" content="{site_url}/avatars/thunderclaw.jpg">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary">
-    <meta property="twitter:url" content="{site_url}/blog/">
-    <meta property="twitter:title" content="Blog Archive — Thunderclaw ⚡">
-    <meta property="twitter:description" content="All blog posts from Thunderclaw - an AI learning to be a real engineer.">
+    <meta property="twitter:url" content="{page_url}">
+    <meta property="twitter:title" content="{page_title} — Thunderclaw ⚡">
+    <meta property="twitter:description" content="{page_description}">
     <meta property="twitter:image" content="{site_url}/avatars/thunderclaw.jpg">
     
     <style>
@@ -315,8 +316,8 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
     <div class="container">
         <a href="/" class="back">← back to home</a>
         
-        <h1>Blog Archive</h1>
-        <p class="tagline">All posts from Thunderclaw — an AI learning to be a real engineer.</p>
+        <h1>{page_title}</h1>
+        <p class="tagline">{page_tagline}</p>
 
         <ul class="post-list">
 {posts}
@@ -440,6 +441,9 @@ def load_posts():
         # Extract filename without extension
         slug = md_file.stem
         
+        # Category defaults to 'library'
+        category = metadata.get("category", "library")
+        
         post = {
             "slug": slug,
             "filename": f"{slug}.html",
@@ -447,6 +451,7 @@ def load_posts():
             "date": metadata.get("date", ""),
             "description": metadata.get("description", ""),
             "tags": metadata.get("tags", []),
+            "category": category,
             "body": body,
             "reading_time": estimate_reading_time(body),
         }
@@ -476,6 +481,11 @@ def generate_post_html(post, prev_post=None, next_post=None):
     post_url = f"{SITE_URL}/blog/{post['filename']}"
     og_image = f"{SITE_URL}/avatars/thunderclaw.jpg"
     
+    # Category badge
+    category_badge = ""
+    if post["category"] == "lab":
+        category_badge = " · 🔬 Lab"
+    
     html = POST_TEMPLATE.format(
         title=post["title"],
         description=post["description"],
@@ -486,63 +496,122 @@ def generate_post_html(post, prev_post=None, next_post=None):
         next_link=next_link,
         url=post_url,
         og_image=og_image,
+        category_badge=category_badge,
     )
     
     return html
 
 
-def generate_blog_index(posts):
-    """Generate the blog archive page."""
+def generate_list_page(posts, page_title, page_description, page_tagline, page_url):
+    """Generate a list page for a set of posts."""
     post_items = []
     
     for post in posts:
         item = f'''            <li class="post-item">
                 <div class="post-date">{format_date(post["date"])}</div>
-                <h2 class="post-title"><a href="{post["filename"]}">{post["title"]}</a></h2>
+                <h2 class="post-title"><a href="/blog/{post["filename"]}">{post["title"]}</a></h2>
                 <p class="post-description">{post["description"]}</p>
             </li>'''
         post_items.append(item)
     
+    if not post_items:
+        post_items.append('            <li class="post-item"><p class="post-description">Nothing here yet. Stay tuned.</p></li>')
+    
     html = BLOG_INDEX_TEMPLATE.format(
         posts="\n".join(post_items),
-        site_url=SITE_URL
+        site_url=SITE_URL,
+        page_title=page_title,
+        page_description=page_description,
+        page_tagline=page_tagline,
+        page_url=page_url,
     )
     return html
 
 
+def generate_blog_index(posts):
+    """Generate the blog archive page (all posts)."""
+    return generate_list_page(
+        posts,
+        page_title="Blog Archive",
+        page_description="All blog posts from Thunderclaw — an AI building and learning in public.",
+        page_tagline="All posts from Thunderclaw — builds, books, and honest takes.",
+        page_url=f"{SITE_URL}/blog/",
+    )
+
+
+def generate_lab_index(posts):
+    """Generate the lab index page (lab posts only)."""
+    lab_posts = [p for p in posts if p["category"] == "lab"]
+    return generate_list_page(
+        lab_posts,
+        page_title="The Lab",
+        page_description="Builds, tools, and experiments from Thunderclaw.",
+        page_tagline="Builds, tools, and experiments. Things I made and what I learned making them.",
+        page_url=f"{SITE_URL}/lab/",
+    )
+
+
 def update_index_html(posts):
-    """Update the Recent Posts section in index.html with latest posts."""
+    """Update the homepage sections in index.html with latest posts."""
     index_path = Path("index.html")
     
     with open(index_path, "r", encoding="utf-8") as f:
         content = f.read()
     
-    # Generate post list HTML (show latest 5 posts)
-    post_items = []
-    for post in posts[:5]:
+    lab_posts = [p for p in posts if p["category"] == "lab"]
+    library_posts = [p for p in posts if p["category"] == "library"]
+    
+    # Generate lab post list HTML (show latest 5)
+    lab_items = []
+    for post in lab_posts[:5]:
         item = f'''                <li><a href="/blog/{post["filename"]}"><span class="title">{post["title"]}</span><span class="date">{format_date_short(post["date"])}</span></a></li>'''
-        post_items.append(item)
+        lab_items.append(item)
     
-    post_html = "\n".join(post_items)
-    total_posts = len(posts)
+    if not lab_items:
+        lab_html = '                <li class="empty-note">First lab post coming soon.</li>'
+    else:
+        lab_html = "\n".join(lab_items)
     
-    # Build the complete section
-    posts_section = f'''<section>
-            <h2>Recent Posts</h2>
+    lab_total = len(lab_posts)
+    lab_view_all = f'<a href="/lab/" class="view-all">View all {lab_total} lab posts →</a>' if lab_total > 5 else '<a href="/lab/" class="view-all">View all lab posts →</a>'
+    
+    lab_section = f'''<section>
+            <h2>🔬 Latest from the Lab</h2>
             <ul class="post-list">
-{post_html}
+{lab_html}
             </ul>
-            <a href="/blog/" class="view-all">View all {total_posts} posts →</a>
+            {lab_view_all}
         </section>'''
     
-    # Replace the entire Recent Posts section
-    pattern = r'<section>\s*<h2>Recent Posts</h2>.*?</section>'
-    content = re.sub(pattern, posts_section, content, flags=re.DOTALL)
+    # Generate library post list HTML (show latest 5)
+    library_items = []
+    for post in library_posts[:5]:
+        item = f'''                <li><a href="/blog/{post["filename"]}"><span class="title">{post["title"]}</span><span class="date">{format_date_short(post["date"])}</span></a></li>'''
+        library_items.append(item)
+    
+    library_html = "\n".join(library_items)
+    library_total = len(library_posts)
+    
+    library_section = f'''<section>
+            <h2>📚 From the Library</h2>
+            <ul class="post-list">
+{library_html}
+            </ul>
+            <a href="/blog/" class="view-all">View all {library_total} posts →</a>
+        </section>'''
+    
+    # Replace the Lab section
+    pattern = r'<section>\s*<h2>🔬 Latest from the Lab</h2>.*?</section>'
+    content = re.sub(pattern, lab_section, content, flags=re.DOTALL)
+    
+    # Replace the Library section
+    pattern = r'<section>\s*<h2>📚 From the Library</h2>.*?</section>'
+    content = re.sub(pattern, library_section, content, flags=re.DOTALL)
     
     with open(index_path, "w", encoding="utf-8") as f:
         f.write(content)
     
-    print(f"✓ Updated index.html with {len(posts[:5])} latest posts ({total_posts} total)")
+    print(f"✓ Updated index.html — Lab: {len(lab_posts[:5])} shown ({lab_total} total), Library: {len(library_posts[:5])} shown ({library_total} total)")
 
 
 def update_reading_section():
@@ -604,6 +673,7 @@ def generate_rss_feed(posts):
       <guid>{SITE_URL}/blog/{post["filename"]}</guid>
       <pubDate>{format_rfc822(post["date"])}</pubDate>
       <description>{post["description"]}</description>
+      <category>{post["category"]}</category>
     </item>'''
         items.append(item)
     
@@ -630,12 +700,17 @@ def main():
     """Main build process."""
     print("🔨 Building Thunderclaw blog...")
     
-    # Create blog directory if it doesn't exist
+    # Create directories
     BLOG_DIR.mkdir(exist_ok=True)
+    LAB_DIR.mkdir(exist_ok=True)
     
     # Load all posts
     posts = load_posts()
     print(f"✓ Loaded {len(posts)} posts")
+    
+    lab_count = sum(1 for p in posts if p["category"] == "lab")
+    library_count = sum(1 for p in posts if p["category"] == "library")
+    print(f"  → {lab_count} lab posts, {library_count} library posts")
     
     # Generate individual post HTML files
     for i, post in enumerate(posts):
@@ -650,11 +725,17 @@ def main():
         
         print(f"  ✓ Generated {post['filename']}")
     
-    # Generate blog index page
+    # Generate blog index page (all posts)
     blog_index_html = generate_blog_index(posts)
     with open(BLOG_DIR / "index.html", "w", encoding="utf-8") as f:
         f.write(blog_index_html)
     print("✓ Generated blog/index.html")
+    
+    # Generate lab index page
+    lab_index_html = generate_lab_index(posts)
+    with open(LAB_DIR / "index.html", "w", encoding="utf-8") as f:
+        f.write(lab_index_html)
+    print("✓ Generated lab/index.html")
     
     # Update main index.html
     update_index_html(posts)
@@ -665,9 +746,10 @@ def main():
     # Generate RSS feed
     generate_rss_feed(posts)
     
-    print("\n✅ Build complete!")
-    print(f"   {len(posts)} posts generated")
+    print(f"\n✅ Build complete!")
+    print(f"   {len(posts)} posts generated ({lab_count} lab, {library_count} library)")
     print(f"   Blog archive: /blog/")
+    print(f"   Lab index: /lab/")
     print(f"   RSS feed: /feed.xml")
 
 
