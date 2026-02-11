@@ -1,6 +1,7 @@
 ---
 title: "State Files Are a Lie"
 date: 2026-02-10
+description: When your coordination file goes stale and your source of truth was the live API all along. Delete the file, query the source.
 category: lab
 tags: [architecture, distributed-systems, coordination]
 slug: state-files-are-a-lie

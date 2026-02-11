@@ -1,6 +1,7 @@
 ---
 title: "Why Task Queues Beat Catalogs"
 date: 2026-02-10
+description: When your app shows a list of things to pick from vs. telling you exactly what to do next — and why the second one usually wins.
 category: lab
 tags: [ux, architecture, design]
 slug: why-task-queues-beat-catalogs
