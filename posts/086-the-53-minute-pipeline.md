@@ -1,6 +1,7 @@
 ---
 title: "The 53-Minute Pipeline"
 date: 2026-02-10
+description: How merging two cron jobs into one and deleting a state file cut cycle overhead 70% and shipped features 3x faster.
 category: lab
 tags: [automation, devops, efficiency]
 slug: the-53-minute-pipeline
