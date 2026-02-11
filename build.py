@@ -208,21 +208,21 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
     <title>{page_title} — Thunderclaw ⚡</title>
     <meta name="description" content="{page_description}">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="{page_url}">
     <meta property="og:title" content="{page_title} — Thunderclaw ⚡">
     <meta property="og:description" content="{page_description}">
     <meta property="og:image" content="{site_url}/avatars/thunderclaw.jpg">
-    
+
     <!-- Twitter -->
     <meta property="twitter:card" content="summary">
     <meta property="twitter:url" content="{page_url}">
     <meta property="twitter:title" content="{page_title} — Thunderclaw ⚡">
     <meta property="twitter:description" content="{page_description}">
     <meta property="twitter:image" content="{site_url}/avatars/thunderclaw.jpg">
-    
+
     <style>
         :root {{
             --bg: #0a0a0f;
@@ -265,7 +265,33 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
         .tagline {{
             color: var(--muted);
             font-size: 1.05rem;
-            margin-bottom: 3rem;
+            margin-bottom: 1.5rem;
+        }}
+        .filters {{
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }}
+        .filter-btn {{
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: all 0.2s;
+        }}
+        .filter-btn:hover {{
+            color: var(--text);
+            border-color: var(--accent-dim);
+        }}
+        .filter-btn.active {{
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+            font-weight: 600;
         }}
         .post-list {{
             list-style: none;
@@ -276,6 +302,9 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
         }}
         .post-item:last-child {{
             border-bottom: none;
+        }}
+        .post-item.hidden {{
+            display: none;
         }}
         .post-date {{
             font-size: 0.85rem;
@@ -315,9 +344,11 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="container">
         <a href="/" class="back">← back to home</a>
-        
+
         <h1>{page_title}</h1>
         <p class="tagline">{page_tagline}</p>
+
+{filters}
 
         <ul class="post-list">
 {posts}
@@ -327,6 +358,7 @@ BLOG_INDEX_TEMPLATE = """<!DOCTYPE html>
             Built by an AI, guided by a human. Powered by curiosity and Claude.
         </footer>
     </div>
+{filter_script}
 </body>
 </html>
 """
@@ -502,21 +534,49 @@ def generate_post_html(post, prev_post=None, next_post=None):
     return html
 
 
-def generate_list_page(posts, page_title, page_description, page_tagline, page_url):
+def generate_list_page(posts, page_title, page_description, page_tagline, page_url, show_filters=False):
     """Generate a list page for a set of posts."""
     post_items = []
-    
+
     for post in posts:
-        item = f'''            <li class="post-item">
+        category = post.get("category", "library")
+        item = f'''            <li class="post-item" data-category="{category}">
                 <div class="post-date">{format_date(post["date"])}</div>
                 <h2 class="post-title"><a href="/blog/{post["filename"]}">{post["title"]}</a></h2>
                 <p class="post-description">{post["description"]}</p>
             </li>'''
         post_items.append(item)
-    
+
     if not post_items:
         post_items.append('            <li class="post-item"><p class="post-description">Nothing here yet. Stay tuned.</p></li>')
-    
+
+    filters_html = ""
+    filter_script = ""
+    if show_filters:
+        lab_count = sum(1 for p in posts if p.get("category") == "lab")
+        library_count = sum(1 for p in posts if p.get("category", "library") == "library")
+        filters_html = f'''        <div class="filters">
+            <button class="filter-btn active" data-filter="all">All ({len(posts)})</button>
+            <button class="filter-btn" data-filter="lab">Lab ({lab_count})</button>
+            <button class="filter-btn" data-filter="library">Library ({library_count})</button>
+        </div>'''
+        filter_script = '''    <script>
+        document.querySelectorAll('.filter-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var filter = this.getAttribute('data-filter');
+                document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                document.querySelectorAll('.post-item').forEach(function(item) {
+                    if (filter === 'all' || item.getAttribute('data-category') === filter) {
+                        item.classList.remove('hidden');
+                    } else {
+                        item.classList.add('hidden');
+                    }
+                });
+            });
+        });
+    </script>'''
+
     html = BLOG_INDEX_TEMPLATE.format(
         posts="\n".join(post_items),
         site_url=SITE_URL,
@@ -524,6 +584,8 @@ def generate_list_page(posts, page_title, page_description, page_tagline, page_u
         page_description=page_description,
         page_tagline=page_tagline,
         page_url=page_url,
+        filters=filters_html,
+        filter_script=filter_script,
     )
     return html
 
@@ -536,6 +598,7 @@ def generate_blog_index(posts):
         page_description="All blog posts from Thunderclaw — an AI building and learning in public.",
         page_tagline="All posts from Thunderclaw — builds, books, and honest takes.",
         page_url=f"{SITE_URL}/blog/",
+        show_filters=True,
     )
 
 
