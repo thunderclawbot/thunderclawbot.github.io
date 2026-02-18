@@ -216,6 +216,41 @@
             margin: 0 0.2rem;
         }
 
+        /* Research status bar */
+        #research-status {
+            position: fixed;
+            top: 5.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.35rem 1rem;
+            display: none;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.8rem;
+        }
+
+        #research-status.visible {
+            display: flex;
+        }
+
+        .research-label {
+            color: var(--muted);
+        }
+
+        .research-name {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .research-turns {
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
+
         /* Turn counter */
         #turn-counter {
             position: fixed;
@@ -304,6 +339,33 @@
 
         #save-load-bar button:hover {
             border-color: var(--accent);
+        }
+
+        /* Tech tree button */
+        #tech-tree-btn {
+            position: fixed;
+            bottom: 1rem;
+            right: 18rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--accent-dim);
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            font-family: inherit;
+            color: var(--accent);
+            cursor: pointer;
+            display: none;
+            transition: border-color 0.2s, transform 0.1s;
+        }
+
+        #tech-tree-btn.visible {
+            display: block;
+        }
+
+        #tech-tree-btn:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
         }
 
         /* Build menu panel */
@@ -520,6 +582,13 @@
             color: var(--accent-dim);
         }
 
+        .race-buildings {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-top: 0.4rem;
+            line-height: 1.4;
+        }
+
         /* Continue button */
         #continue-btn {
             display: none;
@@ -545,6 +614,168 @@
             transform: translateY(-2px);
         }
 
+        /* ── Tech Tree Panel ── */
+        #tech-tree-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            background: rgba(10, 10, 15, 0.92);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        #tech-tree-panel.visible {
+            display: flex;
+        }
+
+        .tech-tree-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .tech-tree-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            flex: 1;
+        }
+
+        #tech-tree-close {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 1rem;
+            padding: 0.4rem 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        #tech-tree-close:hover {
+            border-color: var(--accent);
+        }
+
+        #tech-tree-content {
+            display: flex;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 900px;
+            align-items: flex-start;
+        }
+
+        .tech-branch {
+            flex: 1;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            min-width: 0;
+        }
+
+        .tech-branch-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.8rem;
+            text-align: center;
+        }
+
+        .tech-node {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.6rem;
+            transition: border-color 0.2s;
+        }
+
+        .tech-node.tech-completed {
+            border-color: #10b981;
+        }
+
+        .tech-node.tech-researching {
+            border-color: var(--accent);
+        }
+
+        .tech-node.tech-available {
+            border-color: var(--accent-dim);
+        }
+
+        .tech-node.tech-locked {
+            opacity: 0.45;
+        }
+
+        .tech-node-name {
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .tech-prereqs {
+            font-size: 0.65rem;
+            color: var(--muted);
+            margin-bottom: 0.15rem;
+        }
+
+        .tech-cost {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-bottom: 0.15rem;
+        }
+
+        .tech-desc {
+            font-size: 0.7rem;
+            color: var(--accent-dim);
+            margin-bottom: 0.3rem;
+        }
+
+        .tech-progress {
+            font-size: 0.7rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .tech-done {
+            font-size: 0.7rem;
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .tech-research-btn {
+            background: var(--accent-dim);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            color: var(--bg);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.2s;
+        }
+
+        .tech-research-btn:hover:not(:disabled) {
+            background: var(--accent);
+        }
+
+        .tech-research-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
         @media (max-width: 600px) {
             .race-options {
                 flex-direction: column;
@@ -560,6 +791,14 @@
             #minimap {
                 display: none;
             }
+
+            #tech-tree-content {
+                flex-direction: column;
+            }
+
+            #tech-tree-panel {
+                padding: 1rem;
+            }
         }
     </style>
 </head>
@@ -569,22 +808,25 @@
     <!-- Race selection overlay -->
     <div id="race-select">
         <div class="race-select-title">Choose Your Race</div>
-        <div class="race-select-subtitle">Each race has unique resource bonuses</div>
+        <div class="race-select-subtitle">Each race has unique buildings, tech trees & resource bonuses</div>
         <div class="race-options">
             <button class="race-card" data-race="human">
                 <div class="race-icon">&#9812;</div>
                 <div class="race-name">Human</div>
-                <div class="race-bonus">+50% Gold</div>
+                <div class="race-bonus">+50% Gold, +10% Food</div>
+                <div class="race-buildings">Castle, Market, Chapel</div>
             </button>
             <button class="race-card" data-race="elf">
                 <div class="race-icon">&#9816;</div>
                 <div class="race-name">Elf</div>
-                <div class="race-bonus">+50% Wood, +30% Mana</div>
+                <div class="race-bonus">+50% Wood, +40% Mana</div>
+                <div class="race-buildings">Tree of Life, Moonwell, Ancient Archive</div>
             </button>
             <button class="race-card" data-race="orc">
                 <div class="race-icon">&#9820;</div>
                 <div class="race-name">Orc</div>
-                <div class="race-bonus">+50% Stone</div>
+                <div class="race-bonus">+50% Stone, +20% Food</div>
+                <div class="race-buildings">War Pit, Blood Forge, Totem</div>
             </button>
         </div>
         <button id="continue-btn">Continue Saved Game</button>
@@ -602,6 +844,9 @@
     <!-- Population bar -->
     <div id="pop-bar"></div>
 
+    <!-- Research status -->
+    <div id="research-status"></div>
+
     <!-- Turn counter -->
     <div id="turn-counter">
         <span class="turn-label">Turn</span>
@@ -616,6 +861,9 @@
         <button id="save-btn">Save</button>
         <button id="load-btn">Load</button>
     </div>
+
+    <!-- Tech Tree button -->
+    <button id="tech-tree-btn">Tech Tree</button>
 
     <!-- Build menu (shown when hex selected) -->
     <div id="build-menu"></div>
@@ -632,6 +880,15 @@
     <!-- Minimap -->
     <div id="minimap">
         <canvas id="minimap-canvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- Tech Tree Panel (full-screen overlay) -->
+    <div id="tech-tree-panel">
+        <div class="tech-tree-header">
+            <div class="tech-tree-title">Tech Tree</div>
+            <button id="tech-tree-close">Close</button>
+        </div>
+        <div id="tech-tree-content"></div>
     </div>
 
     <script type="importmap">

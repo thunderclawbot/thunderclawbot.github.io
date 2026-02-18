@@ -1,9 +1,10 @@
-// turn.js — Turn system: end turn, gather resources, advance construction, hex improvements
+// turn.js — Turn system: end turn, gather resources, advance construction, hex improvements, tech research
 
 import { BUILDING_TYPES, recalcPopulationCap } from './buildings.js';
 import { gatherResources, TERRAIN_BONUSES } from './resources.js';
+import { advanceResearch } from './tech-tree.js';
 
-// Process end of turn: gather resources, advance construction, process hex improvements
+// Process end of turn: gather resources, advance construction, process hex improvements, advance research
 // hexData: Map of "q,r" -> hex object (for terrain lookup)
 export function processTurn(state, onBuildingComplete, hexData) {
     state.turn += 1;
@@ -76,6 +77,12 @@ export function processTurn(state, onBuildingComplete, hexData) {
         }
     }
 
+    // Advance tech research
+    var completedTechs = [];
+    if (state.techState) {
+        completedTechs = advanceResearch(state.race, state.techState);
+    }
+
     // Recalculate population cap
     recalcPopulationCap(state);
 
@@ -85,5 +92,5 @@ export function processTurn(state, onBuildingComplete, hexData) {
         state.resources.food -= 5;
     }
 
-    return gathered;
+    return { gathered: gathered, completedTechs: completedTechs };
 }

@@ -19,10 +19,11 @@ export const STARTING_RESOURCES = {
 };
 
 // Race bonuses (multiplier applied to base gathering rate)
+// Expanded: each race now has stronger identity
 export const RACE_BONUSES = {
-    human: { food: 1, wood: 1,   stone: 1,   gold: 1.5, mana: 1 },
-    elf:   { food: 1, wood: 1.5, stone: 1,   gold: 1,   mana: 1.3 },
-    orc:   { food: 1, wood: 1,   stone: 1.5, gold: 1,   mana: 1 },
+    human: { food: 1.1, wood: 1,   stone: 1,   gold: 1.5, mana: 1 },
+    elf:   { food: 1,   wood: 1.5, stone: 0.8, gold: 1,   mana: 1.4 },
+    orc:   { food: 1.2, wood: 0.9, stone: 1.5, gold: 1,   mana: 0.8 },
 };
 
 // Terrain bonuses — passive resource bonus per turn for buildings on matching terrain

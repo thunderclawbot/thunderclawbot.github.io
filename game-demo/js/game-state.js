@@ -1,7 +1,8 @@
 // game-state.js — Central game state (serializable)
-// Stores turn, race, resources, buildings, population, hex improvements
+// Stores turn, race, resources, buildings, population, hex improvements, tech research
 
 import { STARTING_RESOURCES } from './resources.js';
+import { createTechState } from './tech-tree.js';
 
 const SAVE_KEY = 'thunderclaw_hex_save';
 
@@ -15,6 +16,7 @@ export function createGameState(race) {
         population: { current: 5, cap: 5 },  // Town Center gives 5 starting pop
         hexImprovements: [],    // { q, r, turnsRemaining, bonus }
         exploredHexes: [],      // "q,r" keys
+        techState: createTechState(race),  // tech research progress
     };
 }
 

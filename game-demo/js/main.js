@@ -6,8 +6,9 @@ import { setupCamera } from './camera.js';
 import { setupInput } from './input.js';
 import { createGameState, addBuilding, getAvailableWorkers, getAssignedWorkers, startHexImprovement, saveGame, loadGame, hasSavedGame, deleteSavedGame } from './game-state.js';
 import { RESOURCE_INFO, RESOURCE_TYPES, TERRAIN_BONUSES } from './resources.js';
-import { BUILDING_TYPES, canPlaceBuilding, canUpgradeBuilding, deductCost, deductUpgradeCost, createBuildingMesh, recalcPopulationCap, UPGRADE_COSTS, LEVEL_MULTIPLIERS } from './buildings.js';
+import { BUILDING_TYPES, canPlaceBuilding, canUpgradeBuilding, deductCost, deductUpgradeCost, createBuildingMesh, recalcPopulationCap, UPGRADE_COSTS, LEVEL_MULTIPLIERS, getBuildingsForRace, getBuildingColor } from './buildings.js';
 import { processTurn } from './turn.js';
+import { RACE_TECH_TREES, TECH_STATE, canResearchTech, startResearch, getUnlockedBuildings, getCurrentResearch, createTechState } from './tech-tree.js';
 
 function init() {
     // Renderer
@@ -61,11 +62,16 @@ function init() {
     const minimapCanvas = document.getElementById('minimap-canvas');
     const saveBtn = document.getElementById('save-btn');
     const loadBtn = document.getElementById('load-btn');
+    const techTreeBtn = document.getElementById('tech-tree-btn');
+    const techTreePanel = document.getElementById('tech-tree-panel');
+    const techTreeClose = document.getElementById('tech-tree-close');
+    const techTreeContent = document.getElementById('tech-tree-content');
+    const researchStatusEl = document.getElementById('research-status');
 
     // ── Race Selection ──
     document.querySelectorAll('.race-card').forEach(function (card) {
         card.addEventListener('click', function () {
-            const race = this.getAttribute('data-race');
+            var race = this.getAttribute('data-race');
             startGame(race);
         });
     });
@@ -108,6 +114,7 @@ function init() {
         // Ensure new fields exist for older saves
         if (!gameState.population) gameState.population = { current: 5, cap: 5 };
         if (!gameState.hexImprovements) gameState.hexImprovements = [];
+        if (!gameState.techState) gameState.techState = createTechState(gameState.race);
 
         // Rebuild building meshes from state
         for (var i = 0; i < gameState.buildings.length; i++) {
@@ -119,7 +126,7 @@ function init() {
             if (hex) {
                 hex.building = { type: b.type, turnsRemaining: b.turnsRemaining, level: b.level };
             }
-            var mesh = createBuildingMesh(b.type, b.q, b.r, b.turnsRemaining, b.level);
+            var mesh = createBuildingMesh(b.type, b.q, b.r, b.turnsRemaining, b.level, gameState.race);
             scene.add(mesh);
             buildingMeshes.set(key, mesh);
         }
@@ -145,10 +152,12 @@ function init() {
         endTurnBtn.classList.add('visible');
         popBarEl.classList.add('visible');
         document.getElementById('save-load-bar').classList.add('visible');
+        if (techTreeBtn) techTreeBtn.classList.add('visible');
 
         updateResourceBar();
         updateTurnCounter();
         updatePopBar();
+        updateResearchStatus();
         drawMinimap();
     }
 
@@ -183,8 +192,8 @@ function init() {
         addBuilding(gameState, buildingType, q, r, def.turnsToBuild);
         hex.building = { type: buildingType, turnsRemaining: def.turnsToBuild, level: 1 };
 
-        // Create 3D mesh
-        var mesh = createBuildingMesh(buildingType, q, r, def.turnsToBuild, 1);
+        // Create 3D mesh with race color
+        var mesh = createBuildingMesh(buildingType, q, r, def.turnsToBuild, 1, gameState.race);
         scene.add(mesh);
         buildingMeshes.set(key, mesh);
 
@@ -212,7 +221,7 @@ function init() {
             oldMesh.geometry.dispose();
             oldMesh.material.dispose();
         }
-        var newMesh = createBuildingMesh(buildingState.type, buildingState.q, buildingState.r, 0, nextLevel);
+        var newMesh = createBuildingMesh(buildingState.type, buildingState.q, buildingState.r, 0, nextLevel, gameState.race);
         scene.add(newMesh);
         buildingMeshes.set(key, newMesh);
 
@@ -249,6 +258,22 @@ function init() {
             '<span class="pop-sep">|</span>' +
             '<span class="pop-label">Workers</span>' +
             '<span class="pop-number">' + assigned + ' assigned, ' + avail + ' free</span>';
+    }
+
+    function updateResearchStatus() {
+        if (!gameState || !researchStatusEl) return;
+        var currentId = getCurrentResearch(gameState.techState);
+        if (currentId) {
+            var tree = RACE_TECH_TREES[gameState.race];
+            var tech = tree[currentId];
+            var ts = gameState.techState[currentId];
+            researchStatusEl.innerHTML = '<span class="research-label">Researching:</span> ' +
+                '<span class="research-name">' + tech.name + '</span> ' +
+                '<span class="research-turns">(' + ts.turnsRemaining + ' turns)</span>';
+            researchStatusEl.classList.add('visible');
+        } else {
+            researchStatusEl.classList.remove('visible');
+        }
     }
 
     // ── Build Menu ──
@@ -374,11 +399,16 @@ function init() {
             return;
         }
 
-        // No building — show build options and hex improve option
+        // No building — show build options filtered by tech tree unlocks
+        var unlockedBuildings = getUnlockedBuildings(gameState.race, gameState.techState);
+        var raceBuildings = getBuildingsForRace(gameState.race);
+
         var html = '<div class="build-menu-title">Build</div>';
-        for (var typeKey in BUILDING_TYPES) {
+        for (var typeKey in raceBuildings) {
             if (typeKey === 'town_center') continue; // Can't manually build
-            var def = BUILDING_TYPES[typeKey];
+            if (!unlockedBuildings.has(typeKey)) continue; // Not yet researched
+
+            var def = raceBuildings[typeKey];
             var check = canPlaceBuilding(typeKey, hex, gameState.resources);
 
             var costParts = [];
@@ -465,6 +495,107 @@ function init() {
 
     function hideBuildMenu() {
         buildMenuEl.classList.remove('visible');
+    }
+
+    // ── Tech Tree Panel ──
+    function renderTechTree() {
+        if (!gameState || !techTreeContent) return;
+        var race = gameState.race;
+        var tree = RACE_TECH_TREES[race];
+        var ts = gameState.techState;
+
+        var branches = { economy: [], military: [], magic: [] };
+        for (var id in tree) {
+            branches[tree[id].branch].push(id);
+        }
+
+        var html = '';
+        var branchNames = { economy: 'Economy', military: 'Military', magic: 'Magic' };
+        var branchIcons = { economy: 'G', military: 'S', magic: 'M' };
+
+        for (var branch in branches) {
+            html += '<div class="tech-branch">';
+            html += '<div class="tech-branch-title">' + branchNames[branch] + '</div>';
+
+            var techIds = branches[branch];
+            for (var i = 0; i < techIds.length; i++) {
+                var techId = techIds[i];
+                var tech = tree[techId];
+                var state = ts[techId];
+                var statusClass = 'tech-' + state.status;
+
+                // Draw connection lines for prerequisites
+                var prereqNames = [];
+                for (var p = 0; p < tech.prerequisites.length; p++) {
+                    prereqNames.push(tree[tech.prerequisites[p]].name);
+                }
+
+                html += '<div class="tech-node ' + statusClass + '" data-tech="' + techId + '">';
+                html += '<div class="tech-node-name">' + tech.name + '</div>';
+
+                if (prereqNames.length > 0) {
+                    html += '<div class="tech-prereqs">Requires: ' + prereqNames.join(', ') + '</div>';
+                }
+
+                // Cost
+                var costParts = [];
+                for (var res in tech.cost) {
+                    if (tech.cost[res] > 0) {
+                        costParts.push(RESOURCE_INFO[res].icon + tech.cost[res]);
+                    }
+                }
+                html += '<div class="tech-cost">' + costParts.join(' ') + ' | ' + tech.turnsToResearch + ' turns</div>';
+                html += '<div class="tech-desc">' + tech.description + '</div>';
+
+                if (state.status === TECH_STATE.researching) {
+                    html += '<div class="tech-progress">Researching: ' + state.turnsRemaining + ' turns left</div>';
+                } else if (state.status === TECH_STATE.available) {
+                    var canRes = canResearchTech(techId, race, ts, gameState.resources);
+                    html += '<button class="tech-research-btn"' + (canRes.ok ? '' : ' disabled title="' + canRes.reason + '"') + ' data-tech="' + techId + '">Research</button>';
+                } else if (state.status === TECH_STATE.completed) {
+                    html += '<div class="tech-done">Completed</div>';
+                }
+
+                html += '</div>';
+            }
+
+            html += '</div>';
+        }
+
+        techTreeContent.innerHTML = html;
+
+        // Bind research buttons
+        techTreeContent.querySelectorAll('.tech-research-btn:not(:disabled)').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var techId = this.getAttribute('data-tech');
+                var check = canResearchTech(techId, race, ts, gameState.resources);
+                if (check.ok) {
+                    gameState.resources = startResearch(techId, race, ts, gameState.resources);
+                    updateResourceBar();
+                    updateResearchStatus();
+                    renderTechTree();
+                }
+            });
+        });
+    }
+
+    // Tech tree toggle
+    if (techTreeBtn) {
+        techTreeBtn.addEventListener('click', function () {
+            if (techTreePanel.classList.contains('visible')) {
+                techTreePanel.classList.remove('visible');
+            } else {
+                renderTechTree();
+                techTreePanel.classList.add('visible');
+            }
+        });
+    }
+
+    if (techTreeClose) {
+        techTreeClose.addEventListener('click', function () {
+            techTreePanel.classList.remove('visible');
+        });
     }
 
     // ── Resource Gathering Visualization ──
@@ -631,7 +762,7 @@ function init() {
     endTurnBtn.addEventListener('click', function () {
         if (!gameState) return;
 
-        var gathered = processTurn(gameState, function onComplete(building) {
+        var result = processTurn(gameState, function onComplete(building) {
             // Building finished construction
             var key = building.q + ',' + building.r;
             var hex = hexData.get(key);
@@ -639,6 +770,9 @@ function init() {
                 hex.building.turnsRemaining = 0;
             }
         }, hexData);
+
+        var gathered = result.gathered || result;
+        var completedTechs = result.completedTechs || [];
 
         // Update building meshes for construction progress
         for (var i = 0; i < gameState.buildings.length; i++) {
@@ -650,7 +784,7 @@ function init() {
                 scene.remove(mesh);
                 mesh.geometry.dispose();
                 mesh.material.dispose();
-                var newMesh = createBuildingMesh(building.type, building.q, building.r, building.turnsRemaining, building.level || 1);
+                var newMesh = createBuildingMesh(building.type, building.q, building.r, building.turnsRemaining, building.level || 1, gameState.race);
                 scene.add(newMesh);
                 buildingMeshes.set(key, newMesh);
             }
@@ -680,7 +814,13 @@ function init() {
         updateResourceBar();
         updateTurnCounter();
         updatePopBar();
+        updateResearchStatus();
         drawMinimap();
+
+        // Refresh tech tree if open
+        if (techTreePanel && techTreePanel.classList.contains('visible')) {
+            renderTechTree();
+        }
 
         // Refresh build menu if open
         if (inputApi && inputApi.getSelectedKey()) {
