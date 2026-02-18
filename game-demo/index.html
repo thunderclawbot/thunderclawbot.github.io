@@ -776,6 +776,321 @@
             cursor: not-allowed;
         }
 
+        /* ── Event Toast ── */
+        #event-toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            z-index: 60;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem 1.6rem;
+            min-width: 280px;
+            max-width: 380px;
+            text-align: center;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+        }
+
+        #event-toast.visible {
+            display: block;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        #event-toast.event-boon { border-color: #10b981; }
+        #event-toast.event-challenge { border-color: #ef4444; }
+        #event-toast.event-story { border-color: #60a5fa; }
+        #event-toast.event-quest { border-color: #a78bfa; }
+
+        #event-toast-category {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+            color: var(--muted);
+        }
+
+        .event-boon #event-toast-category { color: #10b981; }
+        .event-challenge #event-toast-category { color: #ef4444; }
+        .event-story #event-toast-category { color: #60a5fa; }
+        .event-quest #event-toast-category { color: #a78bfa; }
+
+        #event-toast-name {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.4rem;
+        }
+
+        #event-toast-text {
+            font-size: 0.82rem;
+            color: var(--muted);
+            line-height: 1.5;
+            margin-bottom: 0.4rem;
+        }
+
+        #event-toast-result {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.6rem;
+        }
+
+        #event-toast-dismiss {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.8rem;
+            font-family: inherit;
+            padding: 0.35rem 1.2rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        #event-toast-dismiss:hover {
+            border-color: var(--accent);
+        }
+
+        /* ── Quest Panel ── */
+        #quest-panel {
+            position: fixed;
+            top: 7.5rem;
+            left: 1rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            min-width: 200px;
+            max-width: 240px;
+            display: none;
+            font-size: 0.78rem;
+        }
+
+        #quest-panel.visible {
+            display: block;
+        }
+
+        .quest-panel-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent);
+            margin-bottom: 0.4rem;
+        }
+
+        .quest-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .quest-item-name {
+            font-weight: 600;
+            font-size: 0.8rem;
+            margin-bottom: 0.15rem;
+        }
+
+        .quest-item-desc {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+
+        .quest-item-progress {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .quest-progress-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .quest-progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        .quest-progress-text {
+            font-size: 0.65rem;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .quest-turns-left {
+            font-size: 0.65rem;
+            color: var(--accent-dim);
+        }
+
+        .quest-reward {
+            font-size: 0.65rem;
+            color: #10b981;
+        }
+
+        /* ── Event Log Panel ── */
+        #event-log-btn {
+            position: fixed;
+            bottom: 1rem;
+            right: 23rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            font-family: inherit;
+            color: var(--text);
+            cursor: pointer;
+            display: none;
+            transition: border-color 0.2s;
+        }
+
+        #event-log-btn.visible {
+            display: block;
+        }
+
+        #event-log-btn:hover {
+            border-color: var(--accent);
+        }
+
+        #event-log-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            background: rgba(10, 10, 15, 0.92);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        #event-log-panel.visible {
+            display: flex;
+        }
+
+        .event-log-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .event-log-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            flex: 1;
+        }
+
+        #event-log-close {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 1rem;
+            padding: 0.4rem 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        #event-log-close:hover {
+            border-color: var(--accent);
+        }
+
+        #event-log-content {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .event-log-empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 2rem;
+        }
+
+        .event-log-entry {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .event-log-entry.log-boon { border-left: 3px solid #10b981; }
+        .event-log-entry.log-challenge { border-left: 3px solid #ef4444; }
+        .event-log-entry.log-story { border-left: 3px solid #60a5fa; }
+        .event-log-entry.log-quest { border-left: 3px solid #a78bfa; }
+
+        .event-log-turn {
+            font-size: 0.65rem;
+            color: var(--muted);
+            float: right;
+        }
+
+        .event-log-name {
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 0.15rem;
+        }
+
+        .event-log-text {
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .event-log-result {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-top: 0.15rem;
+        }
+
+        /* ── Quest Celebration ── */
+        .quest-celebration {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            z-index: 70;
+            pointer-events: none;
+        }
+
+        .celebration-particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: celebrate 0.8s ease-out forwards;
+        }
+
+        @keyframes celebrate {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
         @media (max-width: 600px) {
             .race-options {
                 flex-direction: column;
@@ -880,6 +1195,33 @@
     <!-- Minimap -->
     <div id="minimap">
         <canvas id="minimap-canvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- Event Toast -->
+    <div id="event-toast">
+        <div id="event-toast-category"></div>
+        <div id="event-toast-name"></div>
+        <div id="event-toast-text"></div>
+        <div id="event-toast-result"></div>
+        <button id="event-toast-dismiss">OK</button>
+    </div>
+
+    <!-- Quest Panel -->
+    <div id="quest-panel">
+        <div class="quest-panel-title">Active Quests</div>
+        <div id="quest-panel-content"></div>
+    </div>
+
+    <!-- Event Log Button -->
+    <button id="event-log-btn">Event Log</button>
+
+    <!-- Event Log Panel (full-screen overlay) -->
+    <div id="event-log-panel">
+        <div class="event-log-header">
+            <div class="event-log-title">Event Log</div>
+            <button id="event-log-close">Close</button>
+        </div>
+        <div id="event-log-content"></div>
     </div>
 
     <!-- Tech Tree Panel (full-screen overlay) -->

@@ -9,6 +9,7 @@ import { RESOURCE_INFO, RESOURCE_TYPES, TERRAIN_BONUSES } from './resources.js';
 import { BUILDING_TYPES, canPlaceBuilding, canUpgradeBuilding, deductCost, deductUpgradeCost, createBuildingMesh, recalcPopulationCap, UPGRADE_COSTS, LEVEL_MULTIPLIERS, getBuildingsForRace, getBuildingColor } from './buildings.js';
 import { processTurn } from './turn.js';
 import { RACE_TECH_TREES, TECH_STATE, canResearchTech, startResearch, getUnlockedBuildings, getCurrentResearch, createTechState } from './tech-tree.js';
+import { createStorytellerState, processStorytellerTurn, getQuestProgress, initBuildingHP } from './storyteller.js';
 
 function init() {
     // Renderer
@@ -67,6 +68,23 @@ function init() {
     const techTreeClose = document.getElementById('tech-tree-close');
     const techTreeContent = document.getElementById('tech-tree-content');
     const researchStatusEl = document.getElementById('research-status');
+    var eventToastEl = document.getElementById('event-toast');
+    var eventToastCategory = document.getElementById('event-toast-category');
+    var eventToastName = document.getElementById('event-toast-name');
+    var eventToastText = document.getElementById('event-toast-text');
+    var eventToastResult = document.getElementById('event-toast-result');
+    var eventToastDismiss = document.getElementById('event-toast-dismiss');
+    var questPanelEl = document.getElementById('quest-panel');
+    var questPanelContent = document.getElementById('quest-panel-content');
+    var eventLogBtn = document.getElementById('event-log-btn');
+    var eventLogPanel = document.getElementById('event-log-panel');
+    var eventLogClose = document.getElementById('event-log-close');
+    var eventLogContent = document.getElementById('event-log-content');
+
+    // Storyteller state
+    var storytellerState = null;
+    var toastQueue = [];
+    var toastShowing = false;
 
     // ── Race Selection ──
     document.querySelectorAll('.race-card').forEach(function (card) {
@@ -92,6 +110,7 @@ function init() {
 
     function startGame(race) {
         gameState = createGameState(race);
+        storytellerState = createStorytellerState();
 
         // Place a free Town Center on a valid hex near the center
         var centerQ = Math.floor(gridSize / 2);
@@ -104,6 +123,7 @@ function init() {
             tcBuilding.workers = 2;
         }
 
+        initBuildingHP(gameState);
         recalcPopulationCap(gameState);
         showHUD();
     }
@@ -115,6 +135,13 @@ function init() {
         if (!gameState.population) gameState.population = { current: 5, cap: 5 };
         if (!gameState.hexImprovements) gameState.hexImprovements = [];
         if (!gameState.techState) gameState.techState = createTechState(gameState.race);
+
+        // Restore or create storyteller state
+        if (gameState.storyteller) {
+            storytellerState = gameState.storyteller;
+        } else {
+            storytellerState = createStorytellerState();
+        }
 
         // Rebuild building meshes from state
         for (var i = 0; i < gameState.buildings.length; i++) {
@@ -153,11 +180,13 @@ function init() {
         popBarEl.classList.add('visible');
         document.getElementById('save-load-bar').classList.add('visible');
         if (techTreeBtn) techTreeBtn.classList.add('visible');
+        if (eventLogBtn) eventLogBtn.classList.add('visible');
 
         updateResourceBar();
         updateTurnCounter();
         updatePopBar();
         updateResearchStatus();
+        updateQuestPanel();
         drawMinimap();
     }
 
