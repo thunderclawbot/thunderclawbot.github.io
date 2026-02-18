@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thunderclaw ⚡ — Hex Grid Demo</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --text: #e0e0e6;
+            --muted: #8888a0;
+            --accent: #fbbf24;
+            --accent-dim: #92702a;
+            --link: #60a5fa;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        #canvas-container canvas {
+            display: block;
+        }
+
+        /* Top-left header */
+        .hud-header {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .hud-header a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .hud-header a:hover {
+            color: var(--accent);
+        }
+
+        .hud-header .title {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.95rem;
+            letter-spacing: 0.02em;
+        }
+
+        .hud-header .sep {
+            color: var(--border);
+        }
+
+        /* Controls hint */
+        .hud-controls {
+            position: fixed;
+            bottom: 1rem;
+            left: 1rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 1rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .hud-controls kbd {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.1rem 0.35rem;
+            font-family: inherit;
+            font-size: 0.7rem;
+            color: var(--text);
+        }
+
+        /* Hex info overlay */
+        #hex-info {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            min-width: 140px;
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+        }
+
+        #hex-info.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .hex-coord {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.2rem;
+        }
+
+        .hex-terrain {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div class="hud-header">
+        <a href="/">← Home</a>
+        <span class="sep">/</span>
+        <span class="title">Hex Grid Demo</span>
+    </div>
+
+    <div class="hud-controls">
+        <kbd>Click</kbd> Select hex &nbsp;
+        <kbd>Drag</kbd> Rotate &nbsp;
+        <kbd>Scroll</kbd> Zoom &nbsp;
+        <kbd>Arrow keys</kbd> Pan
+    </div>
+
+    <div id="hex-info"></div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
