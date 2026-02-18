@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { TERRAIN } from './hex-grid.js';
+import { BUILDING_TYPES } from './buildings.js';
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -11,12 +12,15 @@ const mouse = new THREE.Vector2();
 const HOVER_EMISSIVE = 0x333333;
 const SELECT_EMISSIVE = 0xfbbf24;
 
-export function setupInput(camera, hexMeshes, hexData) {
+export function setupInput(camera, hexMeshes, hexData, callbacks) {
     let hoveredMesh = null;
     let selectedKey = null;
 
     const meshArray = Array.from(hexMeshes.values());
     const overlay = document.getElementById('hex-info');
+
+    const onSelect = callbacks && callbacks.onSelect;
+    const getGameState = callbacks && callbacks.getGameState;
 
     function getIntersected(event) {
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -49,6 +53,30 @@ export function setupInput(camera, hexMeshes, hexData) {
         hoveredMesh = mesh;
     }
 
+    function updateOverlay(key) {
+        if (!key) {
+            overlay.classList.remove('visible');
+            return;
+        }
+        const data = hexData.get(key);
+        if (!data) return;
+
+        const terrain = TERRAIN[data.terrain];
+        let html = '<div class="hex-coord">Hex (' + data.q + ', ' + data.r + ')</div>' +
+            '<div class="hex-terrain">' + terrain.name + '</div>';
+
+        if (data.building) {
+            const def = BUILDING_TYPES[data.building.type];
+            const status = data.building.turnsRemaining > 0
+                ? ' (building: ' + data.building.turnsRemaining + ' turns)'
+                : '';
+            html += '<div class="hex-building">' + def.name + status + '</div>';
+        }
+
+        overlay.innerHTML = html;
+        overlay.classList.add('visible');
+    }
+
     function selectHex(key) {
         // Deselect previous
         if (selectedKey) {
@@ -66,8 +94,7 @@ export function setupInput(camera, hexMeshes, hexData) {
 
         if (key) {
             const mesh = hexMeshes.get(key);
-            const data = hexData.get(key);
-            if (mesh && data) {
+            if (mesh) {
                 if (!mesh._originalMaterial) {
                     mesh._originalMaterial = mesh.material;
                 }
@@ -76,18 +103,11 @@ export function setupInput(camera, hexMeshes, hexData) {
                 selMat.emissiveIntensity = 0.4;
                 mesh._selectMaterial = selMat;
                 mesh.material = selMat;
-
-                // Update overlay
-                const terrain = TERRAIN[data.terrain];
-                overlay.innerHTML = `
-                    <div class="hex-coord">Hex (${data.q}, ${data.r})</div>
-                    <div class="hex-terrain">${terrain.name}</div>
-                `;
-                overlay.classList.add('visible');
             }
-        } else {
-            overlay.classList.remove('visible');
         }
+
+        updateOverlay(key);
+        if (onSelect) onSelect(key);
     }
 
     // Mouse move — hover
@@ -101,6 +121,15 @@ export function setupInput(camera, hexMeshes, hexData) {
 
     // Click — select
     function onClick(event) {
+        // Ignore clicks on UI overlays
+        if (event.target.closest('#build-menu') ||
+            event.target.closest('#end-turn-btn') ||
+            event.target.closest('#race-select') ||
+            event.target.closest('#resource-bar') ||
+            event.target.closest('#turn-counter')) {
+            return;
+        }
+
         const hit = getIntersected(event);
         if (hit) {
             selectHex(hit.userData.key);
@@ -112,5 +141,11 @@ export function setupInput(camera, hexMeshes, hexData) {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('click', onClick);
 
-    return { selectHex };
+    return {
+        selectHex,
+        getSelectedKey: function () { return selectedKey; },
+        refreshSelection: function () {
+            updateOverlay(selectedKey);
+        },
+    };
 }
