@@ -305,6 +305,118 @@ function init() {
         }
     }
 
+    // ── Toast Notification System ──
+    function showToast(category, name, text, result) {
+        toastQueue.push({ category: category, name: name, text: text, result: result });
+        if (!toastShowing) showNextToast();
+    }
+
+    function showNextToast() {
+        if (toastQueue.length === 0) { toastShowing = false; return; }
+        toastShowing = true;
+        var item = toastQueue.shift();
+        eventToastEl.className = 'event-' + item.category;
+        eventToastCategory.textContent = item.category.toUpperCase();
+        eventToastName.textContent = item.name;
+        eventToastText.textContent = item.text;
+        eventToastResult.textContent = item.result || '';
+        eventToastEl.classList.add('visible');
+    }
+
+    if (eventToastDismiss) {
+        eventToastDismiss.addEventListener('click', function () {
+            eventToastEl.classList.remove('visible');
+            setTimeout(showNextToast, 150);
+        });
+    }
+
+    // ── Quest Panel ──
+    function updateQuestPanel() {
+        if (!storytellerState || !questPanelContent) return;
+        var quests = storytellerState.activeQuests;
+        if (quests.length === 0) { questPanelEl.classList.remove('visible'); return; }
+
+        var html = '';
+        for (var i = 0; i < quests.length; i++) {
+            var q = quests[i];
+            var progress = getQuestProgress(q, gameState);
+            var pct = Math.min(100, Math.floor((progress.current / progress.target) * 100));
+            var rewardParts = [];
+            for (var res in q.reward) {
+                if (q.reward[res] > 0) rewardParts.push('+' + q.reward[res] + ' ' + res);
+            }
+            html += '<div class="quest-item">';
+            html += '<div class="quest-item-name">' + q.name + '</div>';
+            html += '<div class="quest-item-desc">' + q.description + '</div>';
+            html += '<div class="quest-item-progress">';
+            html += '<div class="quest-progress-bar"><div class="quest-progress-fill" style="width:' + pct + '%"></div></div>';
+            html += '<span class="quest-progress-text">' + progress.current + '/' + progress.target + '</span>';
+            html += '</div>';
+            html += '<div class="quest-turns-left">' + q.turnsRemaining + ' turns left</div>';
+            html += '<div class="quest-reward">Reward: ' + rewardParts.join(', ') + '</div>';
+            html += '</div>';
+        }
+        questPanelContent.innerHTML = html;
+        questPanelEl.classList.add('visible');
+    }
+
+    // ── Event Log ──
+    function renderEventLog() {
+        if (!storytellerState || !eventLogContent) return;
+        var log = storytellerState.eventLog;
+        if (log.length === 0) {
+            eventLogContent.innerHTML = '<div class="event-log-empty">No events yet. Keep playing!</div>';
+            return;
+        }
+        var html = '';
+        for (var i = log.length - 1; i >= 0; i--) {
+            var entry = log[i];
+            html += '<div class="event-log-entry log-' + entry.category + '">';
+            html += '<span class="event-log-turn">Turn ' + entry.turn + '</span>';
+            html += '<div class="event-log-name">' + entry.name + '</div>';
+            html += '<div class="event-log-text">' + entry.text + '</div>';
+            if (entry.result) html += '<div class="event-log-result">' + entry.result + '</div>';
+            html += '</div>';
+        }
+        eventLogContent.innerHTML = html;
+    }
+
+    if (eventLogBtn) {
+        eventLogBtn.addEventListener('click', function () {
+            if (eventLogPanel.classList.contains('visible')) {
+                eventLogPanel.classList.remove('visible');
+            } else {
+                renderEventLog();
+                eventLogPanel.classList.add('visible');
+            }
+        });
+    }
+    if (eventLogClose) {
+        eventLogClose.addEventListener('click', function () {
+            eventLogPanel.classList.remove('visible');
+        });
+    }
+
+    // ── Quest Celebration ──
+    function spawnCelebration() {
+        var container = document.createElement('div');
+        container.className = 'quest-celebration';
+        document.body.appendChild(container);
+        var colors = ['#fbbf24', '#10b981', '#60a5fa', '#ef4444', '#a78bfa', '#e0e0e6'];
+        for (var i = 0; i < 20; i++) {
+            var p = document.createElement('div');
+            p.className = 'celebration-particle';
+            p.style.background = colors[Math.floor(Math.random() * colors.length)];
+            var angle = Math.random() * Math.PI * 2;
+            var dist = 40 + Math.random() * 80;
+            p.style.setProperty('--tx', Math.cos(angle) * dist + 'px');
+            p.style.setProperty('--ty', Math.sin(angle) * dist + 'px');
+            p.style.animationDelay = (Math.random() * 0.2) + 's';
+            container.appendChild(p);
+        }
+        setTimeout(function () { document.body.removeChild(container); }, 1200);
+    }
+
     // ── Build Menu ──
     function showBuildMenu(hexKey) {
         if (!gameState) return;
@@ -332,6 +444,13 @@ function init() {
             var level = buildingState ? buildingState.level || 1 : 1;
             if (level > 1) html += ' Lv.' + level;
             html += '</div>';
+
+            // Show HP if building has been damaged
+            if (buildingState && buildingState.hp !== undefined && buildingState.maxHp && buildingState.hp < buildingState.maxHp) {
+                var hpPct = Math.floor((buildingState.hp / buildingState.maxHp) * 100);
+                var hpColor = hpPct > 50 ? '#10b981' : hpPct > 25 ? '#fbbf24' : '#ef4444';
+                html += '<div class="build-option-info" style="color:' + hpColor + '">HP: ' + buildingState.hp + '/' + buildingState.maxHp + '</div>';
+            }
 
             if (hex.building.turnsRemaining > 0) {
                 html += '<div class="build-option-info">Under construction: ' + hex.building.turnsRemaining + ' turn' + (hex.building.turnsRemaining !== 1 ? 's' : '') + ' left</div>';
@@ -754,6 +873,7 @@ function init() {
     // ── Save / Load ──
     saveBtn.addEventListener('click', function () {
         if (!gameState) return;
+        if (storytellerState) gameState.storyteller = storytellerState;
         if (saveGame(gameState)) {
             saveBtn.textContent = 'Saved!';
             setTimeout(function () { saveBtn.textContent = 'Save'; }, 1000);
