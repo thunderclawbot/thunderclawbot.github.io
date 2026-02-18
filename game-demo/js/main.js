@@ -172,8 +172,12 @@ function init() {
         }
 
         let html = '<div class="build-menu-title">Build</div>';
+        let hasOptions = false;
         for (const [typeKey, def] of Object.entries(BUILDING_TYPES)) {
             if (typeKey === 'town_center') continue; // Can't manually build
+            // Only show buildings valid for this terrain
+            if (!def.requiredTerrain.includes(hex.terrain)) continue;
+            hasOptions = true;
             const check = canPlaceBuilding(typeKey, hex, gameState.resources);
 
             const costParts = [];
@@ -197,6 +201,14 @@ function init() {
                 '<div class="build-option-cost">' + costStr + '</div>' +
                 '<div class="build-option-info">' + turnsStr + '</div>' +
                 '</button>';
+        }
+
+        if (!hasOptions) {
+            if (hex.terrain === 'water') {
+                html += '<div class="build-option-info">Cannot build on water</div>';
+            } else {
+                html += '<div class="build-option-info">No buildings for this terrain</div>';
+            }
         }
 
         buildMenuEl.innerHTML = html;
