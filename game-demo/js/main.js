@@ -1,7 +1,7 @@
 // main.js — Entry point for the hex grid game demo
 
 import * as THREE from 'three';
-import { createHexGrid, axialToWorld, TERRAIN } from './hex-grid.js';
+import { createHexGrid, axialToWorld, TERRAIN, HEX_SIZE } from './hex-grid.js';
 import { setupCamera } from './camera.js';
 import { setupInput } from './input.js';
 import { createGameState, addBuilding, getAvailableWorkers, getAssignedWorkers, startHexImprovement, saveGame, loadGame, hasSavedGame, deleteSavedGame } from './game-state.js';
@@ -10,6 +10,7 @@ import { BUILDING_TYPES, canPlaceBuilding, canUpgradeBuilding, deductCost, deduc
 import { processTurn } from './turn.js';
 import { RACE_TECH_TREES, TECH_STATE, canResearchTech, startResearch, getUnlockedBuildings, getCurrentResearch, createTechState } from './tech-tree.js';
 import { createStorytellerState, processStorytellerTurn, getQuestProgress, initBuildingHP } from './storyteller.js';
+import { UNIT_TYPES, getUnitsForRace, canTrainUnit, trainUnit, createUnitMesh, getMovementRange, moveUnit, resolveCombat, getRallyBonus, processUnitTurn, getVisibleHexes, applyFogOfWar, getTrainableUnits, activateCharge } from './units.js';
 
 function init() {
     // Renderer
@@ -46,6 +47,16 @@ function init() {
     // Building meshes tracked by hex key
     const buildingMeshes = new Map();
 
+    // Unit meshes tracked by hex key
+    const unitMeshes = new Map();
+
+    // Movement range highlight meshes
+    var moveHighlights = [];
+
+    // Selected unit state
+    var selectedUnit = null;
+    var reachableHexes = [];
+
     // Resource gathering particles
     const gatherParticles = [];
 
@@ -80,6 +91,9 @@ function init() {
     var eventLogPanel = document.getElementById('event-log-panel');
     var eventLogClose = document.getElementById('event-log-close');
     var eventLogContent = document.getElementById('event-log-content');
+    var combatLogEl = document.getElementById('combat-log');
+    var combatLogContent = document.getElementById('combat-log-content');
+    var combatLogEntries = [];
 
     // Storyteller state
     var storytellerState = null;
@@ -123,8 +137,10 @@ function init() {
             tcBuilding.workers = 2;
         }
 
+        gameState.units = [];
         initBuildingHP(gameState);
         recalcPopulationCap(gameState);
+        updateFogOfWar();
         showHUD();
     }
 
@@ -135,6 +151,7 @@ function init() {
         if (!gameState.population) gameState.population = { current: 5, cap: 5 };
         if (!gameState.hexImprovements) gameState.hexImprovements = [];
         if (!gameState.techState) gameState.techState = createTechState(gameState.race);
+        if (!gameState.units) gameState.units = [];
 
         // Restore or create storyteller state
         if (gameState.storyteller) {
@@ -169,6 +186,8 @@ function init() {
         }
 
         recalcPopulationCap(gameState);
+        rebuildUnitMeshes();
+        updateFogOfWar();
         showHUD();
     }
 
@@ -188,6 +207,214 @@ function init() {
         updateResearchStatus();
         updateQuestPanel();
         drawMinimap();
+    }
+
+    // ── Unit Helpers ──
+
+    function rebuildUnitMeshes() {
+        // Clear existing
+        unitMeshes.forEach(function (mesh) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        });
+        unitMeshes.clear();
+
+        if (!gameState || !gameState.units) return;
+
+        var visible = getVisibleHexes(gameState, hexData);
+
+        for (var i = 0; i < gameState.units.length; i++) {
+            var unit = gameState.units[i];
+            if (unit.turnsToReady > 0) continue; // Not visible until ready
+            var key = unit.q + ',' + unit.r;
+
+            // Only show units in visible hexes (fog of war)
+            if (unit.owner !== 'player' && !visible.has(key)) continue;
+
+            var mesh = createUnitMesh(unit.type, unit.q, unit.r, gameState.race, unit.owner);
+            if (mesh) {
+                scene.add(mesh);
+                unitMeshes.set(key, mesh);
+            }
+        }
+    }
+
+    function updateFogOfWar() {
+        if (!gameState) return;
+        var visible = getVisibleHexes(gameState, hexData);
+
+        // Mark newly visible hexes as explored
+        visible.forEach(function (key) {
+            if (gameState.exploredHexes.indexOf(key) === -1) {
+                gameState.exploredHexes.push(key);
+            }
+        });
+
+        applyFogOfWar(hexMeshes, hexData, visible, gameState.exploredHexes);
+    }
+
+    function showMoveRange(unit) {
+        clearMoveRange();
+        reachableHexes = getMovementRange(unit, hexData, gameState);
+
+        for (var i = 0; i < reachableHexes.length; i++) {
+            var rh = reachableHexes[i];
+            var pos = axialToWorld(rh.q, rh.r);
+            var ringGeo = new THREE.RingGeometry(HEX_SIZE * 0.5, HEX_SIZE * 0.65, 6);
+            var color = rh.hasEnemy ? 0xef4444 : 0x60a5fa;
+            var ringMat = new THREE.MeshBasicMaterial({
+                color: color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.5,
+            });
+            var ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(pos.x, 0.32, pos.z);
+            scene.add(ring);
+            moveHighlights.push(ring);
+        }
+    }
+
+    function clearMoveRange() {
+        for (var i = 0; i < moveHighlights.length; i++) {
+            scene.remove(moveHighlights[i]);
+            moveHighlights[i].geometry.dispose();
+            moveHighlights[i].material.dispose();
+        }
+        moveHighlights = [];
+        reachableHexes = [];
+    }
+
+    function deselectUnit() {
+        selectedUnit = null;
+        clearMoveRange();
+    }
+
+    function addCombatLog(text) {
+        combatLogEntries.push({ turn: gameState ? gameState.turn : 0, text: text });
+        updateCombatLog();
+    }
+
+    function updateCombatLog() {
+        if (!combatLogContent) return;
+        if (combatLogEntries.length === 0) {
+            combatLogEl.classList.remove('visible');
+            return;
+        }
+        // Show last 5 entries
+        var recent = combatLogEntries.slice(-5);
+        var html = '';
+        for (var i = recent.length - 1; i >= 0; i--) {
+            html += '<div class="combat-log-entry">';
+            html += '<span class="combat-log-turn">T' + recent[i].turn + '</span> ';
+            html += recent[i].text;
+            html += '</div>';
+        }
+        combatLogContent.innerHTML = html;
+        combatLogEl.classList.add('visible');
+    }
+
+    function handleUnitClick(hexKey) {
+        if (!gameState || !gameState.units) return false;
+
+        var hex = hexData.get(hexKey);
+        if (!hex) return false;
+
+        var parts = hexKey.split(',');
+        var clickQ = parseInt(parts[0]);
+        var clickR = parseInt(parts[1]);
+
+        // If we have a selected unit and clicked on a reachable hex, move
+        if (selectedUnit) {
+            var isReachable = false;
+            var hasEnemy = false;
+            for (var r = 0; r < reachableHexes.length; r++) {
+                if (reachableHexes[r].q === clickQ && reachableHexes[r].r === clickR) {
+                    isReachable = true;
+                    hasEnemy = reachableHexes[r].hasEnemy;
+                    break;
+                }
+            }
+
+            if (isReachable) {
+                if (hasEnemy) {
+                    // Combat
+                    var defender = null;
+                    for (var d = 0; d < gameState.units.length; d++) {
+                        if (gameState.units[d].q === clickQ && gameState.units[d].r === clickR && gameState.units[d].owner !== selectedUnit.owner) {
+                            defender = gameState.units[d];
+                            break;
+                        }
+                    }
+                    if (defender) {
+                        // Apply rally bonus
+                        var rallyBonus = getRallyBonus(selectedUnit, gameState);
+                        var origAttack = UNIT_TYPES[selectedUnit.type].attack;
+                        if (rallyBonus > 0) {
+                            UNIT_TYPES[selectedUnit.type].attack += rallyBonus;
+                        }
+
+                        var result = resolveCombat(selectedUnit, defender);
+
+                        // Restore original attack
+                        if (rallyBonus > 0) {
+                            UNIT_TYPES[selectedUnit.type].attack = origAttack;
+                        }
+
+                        addCombatLog(result.log);
+                        showToast('challenge', 'Combat', result.log, '');
+
+                        // If defender dead, move attacker to that hex
+                        if (defender.hp <= 0) {
+                            // Remove defender
+                            var defIdx = gameState.units.indexOf(defender);
+                            if (defIdx >= 0) gameState.units.splice(defIdx, 1);
+                            // Move attacker
+                            moveUnit(selectedUnit, clickQ, clickR, hexData);
+                        } else if (selectedUnit.hp <= 0) {
+                            // Attacker defeated
+                            var atkIdx = gameState.units.indexOf(selectedUnit);
+                            if (atkIdx >= 0) gameState.units.splice(atkIdx, 1);
+                        }
+                        // Otherwise both survive, attacker doesn't move
+                    }
+                } else {
+                    // Normal move
+                    moveUnit(selectedUnit, clickQ, clickR, hexData);
+                }
+
+                deselectUnit();
+                rebuildUnitMeshes();
+                updateFogOfWar();
+                drawMinimap();
+                return true;
+            }
+        }
+
+        // Check if clicking on own unit to select it
+        for (var u = 0; u < gameState.units.length; u++) {
+            var unit = gameState.units[u];
+            if (unit.q === clickQ && unit.r === clickR && unit.owner === 'player' && unit.turnsToReady <= 0) {
+                if (selectedUnit === unit) {
+                    // Clicking same unit deselects
+                    deselectUnit();
+                } else {
+                    selectedUnit = unit;
+                    showMoveRange(unit);
+                }
+                return true;
+            }
+        }
+
+        // Clicked on empty hex with a unit selected — deselect
+        if (selectedUnit) {
+            deselectUnit();
+            return false; // Let normal hex selection happen
+        }
+
+        return false;
     }
 
     // Find a valid hex near (cq, cr) for a building type
@@ -513,6 +740,33 @@ function init() {
                         '<div class="build-option-cost">' + costParts.join(' ') + '</div>' +
                         '</button>';
                 }
+
+                // Unit training section
+                var trainable = getTrainableUnits(bType, gameState.race);
+                if (trainable.length > 0) {
+                    html += '<div class="unit-train-section">';
+                    html += '<div class="unit-train-title">Train Units</div>';
+                    for (var ti = 0; ti < trainable.length; ti++) {
+                        var uTypeKey = trainable[ti];
+                        var uDef = UNIT_TYPES[uTypeKey];
+                        var uCheck = canTrainUnit(uTypeKey, gameState, hexData);
+                        var uCostParts = [];
+                        for (var ures in uDef.cost) {
+                            if (uDef.cost[ures] > 0) {
+                                var uHas = (gameState.resources[ures] || 0) >= uDef.cost[ures];
+                                uCostParts.push('<span class="' + (uHas ? '' : 'cost-short') + '">' + RESOURCE_INFO[ures].icon + uDef.cost[ures] + '</span>');
+                            }
+                        }
+                        html += '<button class="build-option train-btn"' + (uCheck.ok ? '' : ' disabled title="' + (uCheck.reason || '') + '"') +
+                            ' data-unit="' + uTypeKey + '">' +
+                            '<div class="build-option-name">' + uDef.name + (uDef.isHero ? ' (Hero)' : '') + '</div>' +
+                            '<div class="build-option-cost">' + uCostParts.join(' ') + '</div>' +
+                            '<div class="build-option-info">' + uDef.trainTurns + ' turn' + (uDef.trainTurns !== 1 ? 's' : '') +
+                            ' | HP:' + uDef.hp + ' ATK:' + uDef.attack + ' DEF:' + uDef.defense + '</div>' +
+                            '</button>';
+                    }
+                    html += '</div>';
+                }
             }
 
             buildMenuEl.innerHTML = html;
@@ -543,6 +797,25 @@ function init() {
                     showBuildMenu(hexKey);
                 });
             }
+
+            // Bind train unit buttons
+            buildMenuEl.querySelectorAll('.train-btn:not(:disabled)').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var unitTypeKey = this.getAttribute('data-unit');
+                    var trained = trainUnit(unitTypeKey, gameState);
+                    if (trained) {
+                        rebuildUnitMeshes();
+                        updateResourceBar();
+                        updatePopBar();
+                        updateFogOfWar();
+                        drawMinimap();
+                        var tDef = UNIT_TYPES[unitTypeKey];
+                        showToast('boon', 'Training', tDef.name + ' training begun (' + tDef.trainTurns + ' turns)', '');
+                    }
+                    showBuildMenu(hexKey);
+                });
+            });
 
             return;
         }
@@ -849,6 +1122,39 @@ function init() {
             }
         });
 
+        // Unit indicators on minimap
+        if (gameState && gameState.units) {
+            for (var ui = 0; ui < gameState.units.length; ui++) {
+                var unit = gameState.units[ui];
+                if (unit.turnsToReady > 0) continue;
+                var ux = unit.q * cellW;
+                var uy = unit.r * cellH;
+                ctx.fillStyle = unit.owner === 'player' ? '#60a5fa' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(ux + cellW / 2, uy + cellH / 2, cellW * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Fog of war on minimap
+        if (gameState) {
+            var visible = getVisibleHexes(gameState, hexData);
+            var exploredSet = new Set(gameState.exploredHexes);
+            hexData.forEach(function (hex, key) {
+                if (!visible.has(key) && !exploredSet.has(key)) {
+                    var fx = hex.q * cellW;
+                    var fy = hex.r * cellH;
+                    ctx.fillStyle = 'rgba(10, 10, 15, 0.8)';
+                    ctx.fillRect(fx, fy, cellW, cellH);
+                } else if (!visible.has(key)) {
+                    var fx2 = hex.q * cellW;
+                    var fy2 = hex.r * cellH;
+                    ctx.fillStyle = 'rgba(10, 10, 15, 0.4)';
+                    ctx.fillRect(fx2, fy2, cellW, cellH);
+                }
+            });
+        }
+
         // Settlement extent border
         if (gameState && gameState.buildings.length > 0) {
             ctx.strokeStyle = '#fbbf24';
@@ -874,6 +1180,7 @@ function init() {
     saveBtn.addEventListener('click', function () {
         if (!gameState) return;
         if (storytellerState) gameState.storyteller = storytellerState;
+        if (combatLogEntries.length > 0) gameState.combatLog = combatLogEntries;
         if (saveGame(gameState)) {
             saveBtn.textContent = 'Saved!';
             setTimeout(function () { saveBtn.textContent = 'Save'; }, 1000);
@@ -890,6 +1197,21 @@ function init() {
                 mesh.material.dispose();
             });
             buildingMeshes.clear();
+
+            // Clear existing unit meshes
+            unitMeshes.forEach(function (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            unitMeshes.clear();
+            deselectUnit();
+
+            // Restore combat log
+            if (saved.combatLog) {
+                combatLogEntries = saved.combatLog;
+                updateCombatLog();
+            }
 
             // Clear hex data buildings/improvements
             hexData.forEach(function (hex) {
@@ -960,11 +1282,49 @@ function init() {
         // Spawn resource gathering particles
         spawnGatherParticles(gathered);
 
+        // Process unit turn (refresh moves, training, hero abilities)
+        deselectUnit();
+        var unitResult = processUnitTurn(gameState, hexData);
+        for (var ul = 0; ul < unitResult.logs.length; ul++) {
+            addCombatLog(unitResult.logs[ul]);
+        }
+        rebuildUnitMeshes();
+        updateFogOfWar();
+
         updateResourceBar();
         updateTurnCounter();
         updatePopBar();
         updateResearchStatus();
         drawMinimap();
+
+        // Process storyteller turn (events, quests)
+        if (storytellerState) {
+            var stResult = processStorytellerTurn(gameState, storytellerState, hexData);
+
+            // Show event toast
+            if (stResult.event) {
+                showToast(stResult.event.category, stResult.event.name, stResult.event.text, stResult.event.result);
+            }
+
+            // Show completed quests
+            for (var cq = 0; cq < stResult.completedQuests.length; cq++) {
+                showToast('boon', 'Quest Complete!', stResult.completedQuests[cq].name, 'Rewards granted');
+                spawnCelebration();
+            }
+
+            // Show failed quests
+            for (var fq = 0; fq < stResult.failedQuests.length; fq++) {
+                showToast('challenge', 'Quest Failed', stResult.failedQuests[fq].name, '');
+            }
+
+            // Show new quest
+            if (stResult.newQuest) {
+                showToast('story', 'New Quest', stResult.newQuest.name, stResult.newQuest.description);
+            }
+
+            updateQuestPanel();
+            updateResourceBar();
+        }
 
         // Refresh tech tree if open
         if (techTreePanel && techTreePanel.classList.contains('visible')) {
@@ -981,9 +1341,16 @@ function init() {
     var inputApi = setupInput(camera, hexMeshes, hexData, {
         onSelect: function (key) {
             if (key) {
-                showBuildMenu(key);
+                // Check if clicking on a unit first
+                var unitHandled = handleUnitClick(key);
+                if (!unitHandled) {
+                    showBuildMenu(key);
+                } else {
+                    hideBuildMenu();
+                }
             } else {
                 hideBuildMenu();
+                deselectUnit();
             }
         },
         getGameState: function () {

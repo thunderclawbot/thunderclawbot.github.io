@@ -1069,6 +1069,83 @@
             margin-top: 0.15rem;
         }
 
+        /* ── Unit info in hex overlay ── */
+        .hex-unit {
+            font-size: 0.82rem;
+            color: #60a5fa;
+            margin-top: 0.3rem;
+            font-weight: 600;
+        }
+
+        .hex-unit-ability {
+            font-size: 0.7rem;
+            color: var(--accent-dim);
+        }
+
+        /* ── Unit train section in build menu ── */
+        .unit-train-section {
+            margin-top: 0.6rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .unit-train-title {
+            font-size: 0.7rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
+        }
+
+        .train-btn {
+            background: var(--bg);
+            border: 1px solid var(--border);
+        }
+
+        .train-btn:not(:disabled):hover {
+            border-color: #60a5fa;
+        }
+
+        /* ── Combat Log ── */
+        #combat-log {
+            position: fixed;
+            bottom: 9rem;
+            left: 1rem;
+            z-index: 10;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 0.7rem;
+            min-width: 200px;
+            max-width: 280px;
+            display: none;
+            font-size: 0.75rem;
+        }
+
+        #combat-log.visible {
+            display: block;
+        }
+
+        .combat-log-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #ef4444;
+            margin-bottom: 0.3rem;
+        }
+
+        .combat-log-entry {
+            color: var(--muted);
+            margin-bottom: 0.2rem;
+            line-height: 1.4;
+        }
+
+        .combat-log-turn {
+            color: var(--accent-dim);
+            font-weight: 600;
+        }
+
         /* ── Quest Celebration ── */
         .quest-celebration {
             position: fixed;
@@ -1195,6 +1272,12 @@
     <!-- Minimap -->
     <div id="minimap">
         <canvas id="minimap-canvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- Combat Log -->
+    <div id="combat-log">
+        <div class="combat-log-title">Combat Log</div>
+        <div id="combat-log-content"></div>
     </div>
 
     <!-- Event Toast -->

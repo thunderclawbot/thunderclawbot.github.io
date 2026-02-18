@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { TERRAIN } from './hex-grid.js';
 import { BUILDING_TYPES } from './buildings.js';
+import { UNIT_TYPES } from './units.js';
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -80,6 +81,30 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
                 html += '<div class="hex-building">Improving: ' + data.improvement.turnsRemaining + ' turns left</div>';
             } else {
                 html += '<div class="hex-building">Improved</div>';
+            }
+        }
+
+        // Show unit info
+        var gs = getGameState ? getGameState() : null;
+        if (gs && gs.units) {
+            for (var i = 0; i < gs.units.length; i++) {
+                var u = gs.units[i];
+                if (u.q === data.q && u.r === data.r) {
+                    var uDef = UNIT_TYPES[u.type];
+                    if (uDef) {
+                        var unitInfo = uDef.name;
+                        if (u.turnsToReady > 0) {
+                            unitInfo += ' (training: ' + u.turnsToReady + ' turns)';
+                        } else {
+                            unitInfo += ' — HP:' + u.hp + '/' + u.maxHp;
+                            unitInfo += ' Moves:' + u.movesLeft;
+                        }
+                        html += '<div class="hex-unit">' + unitInfo + '</div>';
+                        if (uDef.isHero && uDef.abilityName) {
+                            html += '<div class="hex-unit-ability">' + uDef.abilityName + ': ' + uDef.abilityDesc + '</div>';
+                        }
+                    }
+                }
             }
         }
 
