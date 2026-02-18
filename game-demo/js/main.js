@@ -146,8 +146,28 @@ function init() {
     function showBuildMenu(hexKey) {
         if (!gameState) return;
         const hex = hexData.get(hexKey);
-        if (!hex || hex.building) {
+        if (!hex) {
             buildMenuEl.classList.remove('visible');
+            return;
+        }
+
+        // If hex has a building, show its info
+        if (hex.building) {
+            const bDef = BUILDING_TYPES[hex.building.type];
+            let html = '<div class="build-menu-title">' + bDef.name + '</div>';
+            if (hex.building.turnsRemaining > 0) {
+                html += '<div class="build-option-info">Under construction: ' + hex.building.turnsRemaining + ' turn' + (hex.building.turnsRemaining !== 1 ? 's' : '') + ' left</div>';
+            } else {
+                const producing = Object.entries(bDef.resourcesPerTurn)
+                    .filter(function (e) { return e[1] > 0; })
+                    .map(function (e) { return '+' + e[1] + ' ' + RESOURCE_INFO[e[0]].label; })
+                    .join(', ');
+                if (producing) {
+                    html += '<div class="build-option-info">Produces: ' + producing + '/turn</div>';
+                }
+            }
+            buildMenuEl.innerHTML = html;
+            buildMenuEl.classList.add('visible');
             return;
         }
 
