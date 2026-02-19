@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { axialToWorld, HEX_SIZE } from './hex-grid.js';
+import { createBuildingModel, areModelsReady, disposeModel } from './asset-loader.js';
 
 // ── Race Color Palettes ──
 export const RACE_PALETTES = {
@@ -416,6 +417,7 @@ export function deductUpgradeCost(level, resources) {
 }
 
 // Create a 3D mesh for a building (with optional race-based color)
+// Uses the new asset pipeline with procedural model fallback
 export function createBuildingMesh(buildingType, q, r, turnsRemaining, level, race) {
     if (level === undefined) level = 1;
     const def = BUILDING_TYPES[buildingType];
@@ -426,7 +428,49 @@ export function createBuildingMesh(buildingType, q, r, turnsRemaining, level, ra
         ? 1 - (turnsRemaining / def.turnsToBuild)
         : 1;
 
-    // Scale Y by construction progress (min 30% during construction), then apply level multiplier
+    // Try to use the new model system
+    var modelGroup = null;
+    try {
+        modelGroup = createBuildingModel(buildingType, race || 'human');
+    } catch (e) {
+        // Fallback to primitive
+    }
+
+    if (modelGroup) {
+        // Apply level scaling
+        var levelScale = level > 1 ? 1 + (level - 1) * 0.15 : 1;
+        modelGroup.scale.set(levelScale, levelScale * levelMul, levelScale);
+
+        // Construction progress: scale down and make transparent
+        if (turnsRemaining > 0) {
+            var yScaleFactor = 0.3 + 0.7 * progressFraction;
+            modelGroup.scale.y *= yScaleFactor;
+            var opacity = 0.5 + 0.5 * progressFraction;
+            modelGroup.traverse(function (child) {
+                if (child.isMesh) {
+                    child.material = child.material.clone();
+                    child.material.transparent = true;
+                    child.material.opacity = opacity;
+                }
+            });
+        }
+
+        // Level glow for upgraded buildings
+        if (level > 1) {
+            modelGroup.traverse(function (child) {
+                if (child.isMesh && child.material && child.material.color) {
+                    child.material = child.material.clone();
+                    child.material.color.offsetHSL(0, 0, (level - 1) * 0.08);
+                }
+            });
+        }
+
+        modelGroup.position.set(pos.x, 0.3, pos.z);
+        modelGroup.userData = { buildingType: buildingType, q: q, r: r, level: level, isModelGroup: true };
+        return modelGroup;
+    }
+
+    // ── Primitive fallback ──
     const baseY = def.scale.y * levelMul;
     const yScale = turnsRemaining > 0
         ? baseY * (0.3 + 0.7 * progressFraction)
@@ -446,7 +490,6 @@ export function createBuildingMesh(buildingType, q, r, turnsRemaining, level, ra
 
     const opacity = turnsRemaining > 0 ? 0.5 + 0.5 * progressFraction : 1;
 
-    // Use race-specific color if race provided
     var colorHex = race ? getBuildingColor(buildingType, race) : def.color;
     const baseColor = new THREE.Color(colorHex);
     if (level > 1) {
@@ -463,7 +506,6 @@ export function createBuildingMesh(buildingType, q, r, turnsRemaining, level, ra
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    // Place on top of the hex (HEX_HEIGHT = 0.3)
     mesh.position.set(pos.x, 0.3 + yScale / 2, pos.z);
 
     mesh.userData = { buildingType, q, r, level };
@@ -477,15 +519,28 @@ export function updateBuildingMesh(mesh, buildingType, turnsRemaining) {
         ? 1 - (turnsRemaining / def.turnsToBuild)
         : 1;
 
+    // Handle model group (new system)
+    if (mesh.userData && mesh.userData.isModelGroup) {
+        var yScaleFactor = turnsRemaining > 0 ? 0.3 + 0.7 * progressFraction : 1;
+        mesh.scale.y = yScaleFactor;
+        var opacity = turnsRemaining > 0 ? 0.5 + 0.5 * progressFraction : 1;
+        mesh.traverse(function (child) {
+            if (child.isMesh) {
+                child.material.transparent = turnsRemaining > 0;
+                child.material.opacity = opacity;
+            }
+        });
+        return;
+    }
+
+    // Primitive fallback
     const yScale = turnsRemaining > 0
         ? def.scale.y * (0.3 + 0.7 * progressFraction)
         : def.scale.y;
 
-    // Update scale
     mesh.scale.y = yScale / def.scale.y;
     mesh.position.y = 0.3 + (yScale / 2) * (mesh.scale.y > 0 ? 1 : 1);
 
-    // Update material opacity
     if (turnsRemaining > 0) {
         mesh.material.transparent = true;
         mesh.material.opacity = 0.5 + 0.5 * progressFraction;

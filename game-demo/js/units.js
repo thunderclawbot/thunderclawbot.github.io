@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { axialToWorld, axialToCube, cubeDistance, HEX_SIZE } from './hex-grid.js';
 import { RACE_PALETTES } from './buildings.js';
+import { createUnitModel, applyIdleAnimation, disposeModel } from './asset-loader.js';
 
 // ── Terrain movement costs ──
 // water = impassable (Infinity)
@@ -307,17 +308,42 @@ export function trainUnit(unitType, gameState) {
 }
 
 // ── Create unit 3D mesh ──
+// Uses the new asset pipeline with procedural model fallback
 export function createUnitMesh(unitType, q, r, race, owner) {
     var def = UNIT_TYPES[unitType];
     if (!def) return null;
     var pos = axialToWorld(q, r);
-
     var palette = RACE_PALETTES[race] || RACE_PALETTES.human;
+
+    // Try new model system
+    var modelGroup = null;
+    try {
+        modelGroup = createUnitModel(unitType, race);
+    } catch (e) {
+        // Fallback to primitive
+    }
+
+    if (modelGroup) {
+        var yBase = 0.3;
+        modelGroup.position.set(pos.x, yBase, pos.z);
+        modelGroup.userData = {
+            unitType: unitType,
+            q: q,
+            r: r,
+            isUnit: true,
+            isModelGroup: true,
+            baseY: yBase,
+            isHero: !!def.isHero,
+        };
+        return modelGroup;
+    }
+
+    // ── Primitive fallback ──
     var baseColor;
     if (def.isHero) {
         baseColor = new THREE.Color(palette.accent);
     } else if (def.shape === 'sphere') {
-        baseColor = new THREE.Color(0xa78bfa); // mage purple
+        baseColor = new THREE.Color(0xa78bfa);
     } else {
         baseColor = new THREE.Color(palette.secondary);
     }
@@ -344,9 +370,8 @@ export function createUnitMesh(unitType, q, r, race, owner) {
     var mesh = new THREE.Mesh(geometry, material);
     var yBase = 0.3 + (def.shape === 'sphere' ? s.x : s.y / 2);
     mesh.position.set(pos.x, yBase, pos.z);
-    mesh.userData = { unitType: unitType, q: q, r: r, isUnit: true };
+    mesh.userData = { unitType: unitType, q: q, r: r, isUnit: true, baseY: yBase, isHero: !!def.isHero };
 
-    // Add hero glow ring
     if (def.isHero) {
         var ringGeo = new THREE.RingGeometry(s.x + 0.05, s.x + 0.12, 16);
         var ringMat = new THREE.MeshBasicMaterial({

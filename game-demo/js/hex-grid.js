@@ -3,6 +3,7 @@
 // Reference: redblobgames.com/grids/hexagons
 
 import * as THREE from 'three';
+import { createTerrainProps } from './asset-loader.js';
 
 // Terrain definitions
 const TERRAIN = {
@@ -169,9 +170,26 @@ export function createHexGrid(scene, gridSize = 20, seed = 42) {
         }
     }
 
+    // Add terrain props (trees, rocks, grass) to hexes
+    var propGroup = new THREE.Group();
+    hexData.forEach(function (hex, key) {
+        var propSeed = hex.q * 73856093 + hex.r * 19349663;
+        var props = createTerrainProps(hex.terrain, propSeed);
+        for (var i = 0; i < props.length; i++) {
+            var prop = props[i];
+            var worldPos = axialToWorld(hex.q, hex.r);
+            prop.position.x += worldPos.x;
+            prop.position.y += HEX_HEIGHT;
+            prop.position.z += worldPos.z;
+            prop.userData.propHexKey = key;
+            propGroup.add(prop);
+        }
+    });
+    gridGroup.add(propGroup);
+
     scene.add(gridGroup);
 
-    return { hexData, hexMeshes, gridGroup, materials };
+    return { hexData, hexMeshes, gridGroup, materials, propGroup };
 }
 
 export { TERRAIN, HEX_SIZE };

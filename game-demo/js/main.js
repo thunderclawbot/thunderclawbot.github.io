@@ -16,6 +16,7 @@ import { createTutorialState, getTutorialSteps, markTutorialShown, dismissTutori
 import { checkVictory, checkDefeat, collectStats } from './victory.js';
 import { createAIState, processAITurn, getAITownCenter, checkAIDefeated } from './ai-opponent.js';
 import { createRoom, joinRoom, sendAction, sendChat, sendStateSync, setReady, leaveRoom, getRoomCode, getIsHost, getIsMyTurn, setIsMyTurn, isMultiplayerActive, getOpponentRace, getOpponentReady } from './multiplayer.js';
+import { preloadModels, applyIdleAnimation, disposeModel } from './asset-loader.js';
 
 function init() {
     // Renderer
@@ -853,22 +854,34 @@ function init() {
             // Clear scene
             buildingMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             buildingMeshes.clear();
             unitMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             unitMeshes.clear();
 
             // Clear AI building meshes
             aiBuildingMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             aiBuildingMeshes.clear();
 
@@ -913,8 +926,12 @@ function init() {
         // Clear existing
         unitMeshes.forEach(function (mesh) {
             scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+            if (mesh.userData && mesh.userData.isModelGroup) {
+                disposeModel(mesh);
+            } else {
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
+            }
         });
         unitMeshes.clear();
 
@@ -959,8 +976,12 @@ function init() {
         // Clear existing AI building meshes
         aiBuildingMeshes.forEach(function (mesh) {
             scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+            if (mesh.userData && mesh.userData.isModelGroup) {
+                disposeModel(mesh);
+            } else {
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
+            }
         });
         aiBuildingMeshes.clear();
 
@@ -1304,8 +1325,12 @@ function init() {
         var oldMesh = buildingMeshes.get(key);
         if (oldMesh) {
             scene.remove(oldMesh);
-            oldMesh.geometry.dispose();
-            oldMesh.material.dispose();
+            if (oldMesh.userData && oldMesh.userData.isModelGroup) {
+                disposeModel(oldMesh);
+            } else {
+                if (oldMesh.geometry) oldMesh.geometry.dispose();
+                if (oldMesh.material) oldMesh.material.dispose();
+            }
         }
         var newMesh = createBuildingMesh(buildingState.type, buildingState.q, buildingState.r, 0, nextLevel, gameState.race);
         scene.add(newMesh);
@@ -2085,22 +2110,34 @@ function init() {
             // Clear existing scene buildings
             buildingMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             buildingMeshes.clear();
 
             aiBuildingMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             aiBuildingMeshes.clear();
 
             unitMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
             });
             unitMeshes.clear();
             deselectUnit();
@@ -2157,8 +2194,12 @@ function init() {
             var mesh = buildingMeshes.get(key);
             if (mesh) {
                 scene.remove(mesh);
-                mesh.geometry.dispose();
-                mesh.material.dispose();
+                if (mesh.userData && mesh.userData.isModelGroup) {
+                    disposeModel(mesh);
+                } else {
+                    if (mesh.geometry) mesh.geometry.dispose();
+                    if (mesh.material) mesh.material.dispose();
+                }
                 var newMesh = createBuildingMesh(building.type, building.q, building.r, building.turnsRemaining, building.level || 1, gameState.race);
                 scene.add(newMesh);
                 buildingMeshes.set(key, newMesh);
@@ -2325,17 +2366,47 @@ function init() {
     }, { passive: true });
 
     // Animation loop
+    var animClock = new THREE.Clock();
+
     function animate() {
         requestAnimationFrame(animate);
+        var elapsed = animClock.getElapsedTime();
         if (updateKeys) updateKeys();
         updateParticles();
+
+        // Idle animation for unit meshes
+        unitMeshes.forEach(function (mesh) {
+            if (mesh.userData && mesh.userData.baseY !== undefined) {
+                applyIdleAnimation(mesh, elapsed, mesh.userData.isHero);
+            }
+        });
+
         if (controls) controls.update();
         if (camera) {
             renderer.render(scene, camera);
         }
     }
 
-    animate();
+    // Preload models then start
+    var loadingEl = document.getElementById('loading-screen');
+    var loadingBar = document.getElementById('loading-bar-fill');
+    var loadingText = document.getElementById('loading-text');
+
+    preloadModels(function (progress) {
+        if (loadingBar) {
+            var pct = (progress.loaded / progress.total) * 100;
+            loadingBar.style.width = pct + '%';
+        }
+        if (loadingText) {
+            loadingText.textContent = 'Loading models... ' + progress.loaded + '/' + progress.total;
+        }
+    }).then(function () {
+        if (loadingEl) {
+            loadingEl.style.opacity = '0';
+            setTimeout(function () { loadingEl.style.display = 'none'; }, 300);
+        }
+        animate();
+    });
 }
 
 init();
