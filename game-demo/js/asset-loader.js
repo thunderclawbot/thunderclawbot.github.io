@@ -36,7 +36,7 @@ var MODEL_REGISTRY = {
     'prop_rock_small': 'props/rock_small.glb',
     'prop_grass': 'props/grass.glb',
 
-    // Buildings (shared)
+    // Buildings (shared — only models with .glb files on disk)
     'building_town_center': 'buildings/town_center.glb',
     'building_farm': 'buildings/farm.glb',
     'building_lumber_mill': 'buildings/lumber_mill.glb',
@@ -45,24 +45,10 @@ var MODEL_REGISTRY = {
     'building_barracks': 'buildings/barracks.glb',
     'building_mage_tower': 'buildings/mage_tower.glb',
     'building_walls': 'buildings/walls.glb',
-
-    // Human buildings
-    'building_market': 'buildings/market.glb',
-    'building_castle': 'buildings/castle.glb',
-    'building_chapel': 'buildings/chapel.glb',
-    'building_grand_cathedral': 'buildings/grand_cathedral.glb',
-
-    // Elf buildings
-    'building_tree_of_life': 'buildings/tree_of_life.glb',
-    'building_moonwell': 'buildings/moonwell.glb',
-    'building_ancient_archive': 'buildings/ancient_archive.glb',
-    'building_world_tree': 'buildings/world_tree.glb',
-
-    // Orc buildings
-    'building_war_pit': 'buildings/war_pit.glb',
-    'building_blood_forge': 'buildings/blood_forge.glb',
-    'building_totem': 'buildings/totem.glb',
-    'building_skull_throne': 'buildings/skull_throne.glb',
+    // Race-specific buildings (market, castle, chapel, grand_cathedral,
+    // tree_of_life, moonwell, ancient_archive, world_tree, war_pit,
+    // blood_forge, totem, skull_throne) use procedural fallback —
+    // no .glb files shipped yet.
 
     // Units
     'unit_worker': 'units/worker.glb',
