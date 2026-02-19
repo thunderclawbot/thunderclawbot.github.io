@@ -16,7 +16,7 @@ import { initAudio, playClick, playBuild, playTurnEnd, playEventNotification, pl
 import { createTutorialState, getTutorialSteps, markTutorialShown, dismissTutorial, isTutorialComplete } from './tutorial.js';
 import { checkVictory, checkDefeat, collectStats } from './victory.js';
 import { createAIState, processAITurn, getAITownCenter, checkAIDefeated } from './ai-opponent.js';
-import { createRoom, joinRoom, sendAction, sendChat, sendStateSync, setReady, leaveRoom, getRoomCode, getIsHost, getIsMyTurn, setIsMyTurn, isMultiplayerActive, getOpponentRace, getOpponentReady } from './multiplayer.js';
+import { createRoom, joinRoom, sendAction, sendChat, sendStateSync, setReady, leaveRoom, getRoomCode, getIsHost, getIsMyTurn, setIsMyTurn, isMultiplayerActive, getOpponentRace, getOpponentReady, isSupabaseAvailable } from './multiplayer.js';
 import { preloadModels, applyIdleAnimation, disposeModel } from './asset-loader.js';
 import { initSpeedControls, playTurnAnimations, resetReplayState, isReplaying, panCameraToHex, animateUnitMove, animateCombatLunge, screenShake, animateUnitDefeat, animateBuildingComplete, spawnFloatingNumber, animateStorytellerEvent, showEnemyThinking, hideEnemyThinking, delay } from './animation.js';
 
@@ -310,12 +310,19 @@ function init() {
 
     // ── Multiplayer Lobby UI ──
     if (mpBtn) {
-        mpBtn.addEventListener('click', function () {
-            playClick();
-            mpLobby.classList.add('visible');
-            mpLobbyMenu.style.display = '';
-            mpLobbyRoom.style.display = 'none';
-        });
+        if (!isSupabaseAvailable()) {
+            mpBtn.disabled = true;
+            mpBtn.title = 'Multiplayer unavailable (connection library failed to load)';
+            mpBtn.style.opacity = '0.4';
+            mpBtn.style.cursor = 'not-allowed';
+        } else {
+            mpBtn.addEventListener('click', function () {
+                playClick();
+                mpLobby.classList.add('visible');
+                mpLobbyMenu.style.display = '';
+                mpLobbyRoom.style.display = 'none';
+            });
+        }
     }
 
     if (mpLobbyClose) {
@@ -2765,7 +2772,32 @@ function init() {
             setTimeout(function () { loadingEl.style.display = 'none'; }, 300);
         }
         animate();
+    }).catch(function (err) {
+        console.error('Failed to load models:', err);
+        showInitError('Failed to load game models. Please refresh the page.');
     });
 }
 
-init();
+function showInitError(message) {
+    var loadingEl = document.getElementById('loading-screen');
+    var loadingText = document.getElementById('loading-text');
+    var loadingBar = document.getElementById('loading-bar-fill');
+    if (loadingText) {
+        loadingText.textContent = message;
+        loadingText.style.color = '#ef4444';
+    }
+    if (loadingBar) {
+        loadingBar.style.background = '#ef4444';
+    }
+    if (loadingEl) {
+        loadingEl.style.opacity = '1';
+        loadingEl.style.display = '';
+    }
+}
+
+try {
+    init();
+} catch (err) {
+    console.error('Init failed:', err);
+    showInitError('Game failed to start: ' + err.message);
+}

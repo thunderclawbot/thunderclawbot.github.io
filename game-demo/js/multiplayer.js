@@ -329,3 +329,8 @@ export function getOpponentReady() { return opponentReady; }
 export function isMultiplayerActive() {
     return channel !== null && roomCode !== null;
 }
+
+// ── Check if Supabase client is available ──
+export function isSupabaseAvailable() {
+    return typeof window.supabase !== 'undefined' && !!window.supabase.createClient;
+}
