@@ -14,6 +14,7 @@ var TERRAIN_MOVE_COST = {
     forest: 1.5,
     mountain: 2,
     desert: 1,
+    swamp: 2,
     water: Infinity,
 };
 
@@ -428,7 +429,7 @@ export function getMovementRange(unit, hexData, gameState) {
             if (!hex) continue;
 
             var cost = TERRAIN_MOVE_COST[hex.terrain];
-            if (cost === Infinity) continue; // impassable
+            if (cost === undefined || cost === Infinity) continue; // impassable or unknown
 
             var remaining = current.remaining - cost;
             if (remaining < 0) continue;
@@ -499,7 +500,7 @@ function getMoveCost(fromQ, fromR, toQ, toR, hexData) {
             if (!hex) continue;
 
             var moveCost = TERRAIN_MOVE_COST[hex.terrain];
-            if (moveCost === Infinity) continue;
+            if (moveCost === undefined || moveCost === Infinity) continue;
 
             var totalCost = current.cost + moveCost;
             var prevCost = visited.get(nKey);
