@@ -9,7 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 var __dirname = dirname(fileURLToPath(import.meta.url));
-var MODELS_DIR = join(__dirname, '..', 'game-demo', 'assets', 'models');
+var MODELS_DIR = join(__dirname, '..', 'mythical-realms', 'game', 'assets', 'models');
 
 function ensureDir(dir) {
     mkdirSync(dir, { recursive: true });

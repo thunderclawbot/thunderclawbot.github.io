@@ -25,7 +25,7 @@ var RACE_PALETTES = {
 };
 
 // ── Model Registry ──
-// Maps model keys to .glb file paths (relative to /game-demo/assets/models/)
+// Maps model keys to .glb file paths (relative to /mythical-realms/game/assets/models/)
 // If a .glb file is not found, the procedural fallback is used.
 var MODEL_REGISTRY = {
     // Terrain props
