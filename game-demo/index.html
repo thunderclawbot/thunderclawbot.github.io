@@ -1168,10 +1168,334 @@
             100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
         }
 
+        /* ── Start Screen Options ── */
+        .start-options {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .start-option-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .start-option-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .start-option-btns {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .start-option-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            font-family: inherit;
+            color: var(--text);
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .start-option-btn:hover {
+            border-color: var(--accent);
+        }
+
+        .start-option-btn.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* ── Game Over Screen ── */
+        #game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 200;
+            background: rgba(10, 10, 15, 0.96);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+        }
+
+        #game-over-screen.visible {
+            display: flex;
+        }
+
+        .game-over-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+
+        .game-over-title.victory { color: var(--accent); }
+        .game-over-title.defeat { color: #ef4444; }
+
+        .game-over-reason {
+            font-size: 1.1rem;
+            color: var(--muted);
+        }
+
+        .game-over-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem 2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem 2rem;
+            min-width: 320px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .stat-label {
+            color: var(--muted);
+        }
+
+        .stat-value {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .game-over-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .game-over-btn {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 0.7rem 2rem;
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.2s, transform 0.1s;
+        }
+
+        .game-over-btn:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .game-over-btn.primary {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+
+        .game-over-btn.primary:hover {
+            background: #e5a91f;
+        }
+
+        /* ── Tutorial Tooltip ── */
+        #tutorial-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 80;
+            background: rgba(10, 10, 15, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #tutorial-overlay.visible {
+            display: flex;
+        }
+
+        .tutorial-tooltip {
+            background: var(--surface);
+            border: 2px solid var(--accent);
+            border-radius: 12px;
+            padding: 1.2rem 1.6rem;
+            max-width: 360px;
+            text-align: center;
+            animation: tooltipPop 0.3s ease-out;
+        }
+
+        @keyframes tooltipPop {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .tutorial-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.4rem;
+        }
+
+        .tutorial-text {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.5;
+            margin-bottom: 0.8rem;
+        }
+
+        .tutorial-step {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-bottom: 0.6rem;
+        }
+
+        .tutorial-actions {
+            display: flex;
+            gap: 0.6rem;
+            justify-content: center;
+        }
+
+        .tutorial-btn {
+            background: var(--accent);
+            border: none;
+            border-radius: 6px;
+            padding: 0.4rem 1.2rem;
+            color: var(--bg);
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .tutorial-btn:hover {
+            background: #e5a91f;
+        }
+
+        .tutorial-skip {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        .tutorial-skip:hover {
+            border-color: var(--accent);
+            color: var(--text);
+            background: transparent;
+        }
+
+        /* ── Sound Controls ── */
+        #sound-controls {
+            position: fixed;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(calc(-50% + 200px));
+            z-index: 10;
+            display: none;
+            gap: 0.3rem;
+        }
+
+        #sound-controls.visible {
+            display: flex;
+        }
+
+        .sound-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.3rem 0.5rem;
+            font-size: 0.75rem;
+            font-family: inherit;
+            color: var(--muted);
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+            min-width: 28px;
+            text-align: center;
+        }
+
+        .sound-btn:hover {
+            border-color: var(--accent);
+        }
+
+        .sound-btn.active {
+            color: var(--accent);
+            border-color: var(--accent-dim);
+        }
+
+        /* ── Smooth Panel Transitions ── */
+        #build-menu,
+        #quest-panel,
+        #combat-log {
+            transition: opacity 0.2s, transform 0.2s;
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        #build-menu.visible,
+        #quest-panel.visible,
+        #combat-log.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── Resource Change Indicators ── */
+        .resource-change {
+            font-size: 0.65rem;
+            font-weight: 600;
+            margin-left: 2px;
+            transition: opacity 0.3s;
+        }
+
+        .resource-change.positive { color: #4ade80; }
+        .resource-change.negative { color: #ef4444; }
+
+        /* ── Touch-friendly adjustments ── */
+        @media (pointer: coarse) {
+            #end-turn-btn {
+                padding: 1rem 2rem;
+                font-size: 1.1rem;
+            }
+
+            .build-option {
+                padding: 0.7rem 0.9rem;
+                min-height: 44px;
+            }
+
+            .worker-btn {
+                width: 36px;
+                height: 36px;
+                font-size: 1rem;
+            }
+
+            .hud-controls {
+                display: none;
+            }
+        }
+
         @media (max-width: 600px) {
             .race-options {
                 flex-direction: column;
                 gap: 1rem;
+            }
+
+            .start-options {
+                flex-direction: column;
+                gap: 0.8rem;
             }
 
             #resource-bar {
@@ -1191,16 +1515,29 @@
             #tech-tree-panel {
                 padding: 1rem;
             }
+
+            .game-over-stats {
+                grid-template-columns: 1fr;
+                min-width: unset;
+                width: 90%;
+            }
+
+            #sound-controls {
+                transform: translateX(-50%);
+                top: auto;
+                bottom: 4rem;
+                left: 50%;
+            }
         }
     </style>
 </head>
 <body>
     <div id="canvas-container"></div>
 
-    <!-- Race selection overlay -->
+    <!-- Race selection / start screen overlay -->
     <div id="race-select">
-        <div class="race-select-title">Choose Your Race</div>
-        <div class="race-select-subtitle">Each race has unique buildings, tech trees & resource bonuses</div>
+        <div class="race-select-title">Thunderclaw</div>
+        <div class="race-select-subtitle">Choose your race, difficulty & map size</div>
         <div class="race-options">
             <button class="race-card" data-race="human">
                 <div class="race-icon">&#9812;</div>
@@ -1220,6 +1557,24 @@
                 <div class="race-bonus">+50% Stone, +20% Food</div>
                 <div class="race-buildings">War Pit, Blood Forge, Totem</div>
             </button>
+        </div>
+        <div class="start-options">
+            <div class="start-option-group">
+                <div class="start-option-label">Difficulty</div>
+                <div class="start-option-btns" id="difficulty-btns">
+                    <button class="start-option-btn" data-difficulty="easy">Easy</button>
+                    <button class="start-option-btn active" data-difficulty="normal">Normal</button>
+                    <button class="start-option-btn" data-difficulty="hard">Hard</button>
+                </div>
+            </div>
+            <div class="start-option-group">
+                <div class="start-option-label">Map Size</div>
+                <div class="start-option-btns" id="mapsize-btns">
+                    <button class="start-option-btn" data-mapsize="12">Small</button>
+                    <button class="start-option-btn active" data-mapsize="20">Medium</button>
+                    <button class="start-option-btn" data-mapsize="30">Large</button>
+                </div>
+            </div>
         </div>
         <button id="continue-btn">Continue Saved Game</button>
     </div>
@@ -1314,6 +1669,26 @@
             <button id="tech-tree-close">Close</button>
         </div>
         <div id="tech-tree-content"></div>
+    </div>
+
+    <!-- Tutorial Overlay -->
+    <div id="tutorial-overlay"></div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen">
+        <div class="game-over-title" id="game-over-title">Victory!</div>
+        <div class="game-over-reason" id="game-over-reason"></div>
+        <div class="game-over-stats" id="game-over-stats"></div>
+        <div class="game-over-actions">
+            <button class="game-over-btn primary" id="game-over-restart">Play Again</button>
+            <button class="game-over-btn" id="game-over-home" onclick="window.location.href='/'">Home</button>
+        </div>
+    </div>
+
+    <!-- Sound Controls -->
+    <div id="sound-controls">
+        <button class="sound-btn active" id="sfx-toggle" title="Sound Effects">SFX</button>
+        <button class="sound-btn active" id="music-toggle" title="Music">MUS</button>
     </div>
 
     <script type="importmap">

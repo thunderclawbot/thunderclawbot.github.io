@@ -44,9 +44,9 @@ export const BUILDING_TYPES = {
     },
     farm: {
         name: 'Farm',
-        cost: { food: 0, wood: 20, stone: 0, gold: 5, mana: 0 },
+        cost: { food: 0, wood: 15, stone: 0, gold: 5, mana: 0 },
         turnsToBuild: 2,
-        resourcesPerTurn: { food: 5, wood: 0, stone: 0, gold: 0, mana: 0 },
+        resourcesPerTurn: { food: 6, wood: 0, stone: 0, gold: 0, mana: 0 },
         requiredTerrain: ['plains'],
         shape: 'box',
         color: 0x4ade80,
@@ -57,9 +57,9 @@ export const BUILDING_TYPES = {
     },
     lumber_mill: {
         name: 'Lumber Mill',
-        cost: { food: 10, wood: 5, stone: 10, gold: 5, mana: 0 },
-        turnsToBuild: 3,
-        resourcesPerTurn: { food: 0, wood: 5, stone: 0, gold: 0, mana: 0 },
+        cost: { food: 10, wood: 5, stone: 5, gold: 5, mana: 0 },
+        turnsToBuild: 2,
+        resourcesPerTurn: { food: 0, wood: 6, stone: 0, gold: 0, mana: 0 },
         requiredTerrain: ['forest'],
         shape: 'cylinder',
         color: 0xa3e635,
@@ -70,9 +70,9 @@ export const BUILDING_TYPES = {
     },
     quarry: {
         name: 'Quarry',
-        cost: { food: 10, wood: 15, stone: 0, gold: 10, mana: 0 },
-        turnsToBuild: 3,
-        resourcesPerTurn: { food: 0, wood: 0, stone: 5, gold: 0, mana: 0 },
+        cost: { food: 10, wood: 10, stone: 0, gold: 5, mana: 0 },
+        turnsToBuild: 2,
+        resourcesPerTurn: { food: 0, wood: 0, stone: 6, gold: 0, mana: 0 },
         requiredTerrain: ['mountain'],
         shape: 'cone',
         color: 0x94a3b8,
@@ -83,8 +83,8 @@ export const BUILDING_TYPES = {
     },
     mine: {
         name: 'Mine',
-        cost: { food: 10, wood: 20, stone: 15, gold: 0, mana: 0 },
-        turnsToBuild: 4,
+        cost: { food: 10, wood: 15, stone: 10, gold: 0, mana: 0 },
+        turnsToBuild: 3,
         resourcesPerTurn: { food: 0, wood: 0, stone: 0, gold: 5, mana: 0 },
         requiredTerrain: ['mountain', 'desert'],
         shape: 'box',
@@ -96,8 +96,8 @@ export const BUILDING_TYPES = {
     },
     barracks: {
         name: 'Barracks',
-        cost: { food: 20, wood: 30, stone: 20, gold: 15, mana: 0 },
-        turnsToBuild: 4,
+        cost: { food: 15, wood: 25, stone: 15, gold: 10, mana: 0 },
+        turnsToBuild: 3,
         resourcesPerTurn: { food: 0, wood: 0, stone: 0, gold: 0, mana: 0 },
         requiredTerrain: ['plains', 'desert'],
         shape: 'box',
@@ -109,8 +109,8 @@ export const BUILDING_TYPES = {
     },
     mage_tower: {
         name: 'Mage Tower',
-        cost: { food: 10, wood: 15, stone: 25, gold: 20, mana: 10 },
-        turnsToBuild: 5,
+        cost: { food: 10, wood: 15, stone: 20, gold: 15, mana: 8 },
+        turnsToBuild: 4,
         resourcesPerTurn: { food: 0, wood: 0, stone: 0, gold: 0, mana: 3 },
         requiredTerrain: ['plains', 'forest'],
         shape: 'cylinder',
@@ -309,8 +309,8 @@ export const UPGRADE_COSTS = {
 // Level multipliers — applied to scale and resourcesPerTurn
 export const LEVEL_MULTIPLIERS = {
     1: 1.0,
-    2: 1.3,
-    3: 1.6,
+    2: 1.2,
+    3: 1.5,
 };
 
 // Get the color for a building based on race palette

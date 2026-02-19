@@ -11,44 +11,54 @@ import { processTurn } from './turn.js';
 import { RACE_TECH_TREES, TECH_STATE, canResearchTech, startResearch, getUnlockedBuildings, getCurrentResearch, createTechState } from './tech-tree.js';
 import { createStorytellerState, processStorytellerTurn, getQuestProgress, initBuildingHP } from './storyteller.js';
 import { UNIT_TYPES, getUnitsForRace, canTrainUnit, trainUnit, createUnitMesh, getMovementRange, moveUnit, resolveCombat, getRallyBonus, processUnitTurn, getVisibleHexes, applyFogOfWar, getTrainableUnits, activateCharge } from './units.js';
+import { initAudio, playClick, playBuild, playTurnEnd, playEventNotification, playCombat, playVictory, playDefeat, playQuestComplete, startMusic, stopMusic, setSfxEnabled, setMusicEnabled, isMusicPlaying } from './sound.js';
+import { createTutorialState, getTutorialSteps, markTutorialShown, dismissTutorial, isTutorialComplete } from './tutorial.js';
+import { checkVictory, checkDefeat, collectStats } from './victory.js';
 
 function init() {
     // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x0a0a0f);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
     // Scene
-    const scene = new THREE.Scene();
+    var scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x0a0a0f, 60, 100);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    var ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(20, 30, 10);
     dirLight.castShadow = false;
     scene.add(dirLight);
 
-    const fillLight = new THREE.DirectionalLight(0x6088cc, 0.3);
+    var fillLight = new THREE.DirectionalLight(0x6088cc, 0.3);
     fillLight.position.set(-15, 10, -10);
     scene.add(fillLight);
 
-    // Grid
-    const gridSize = 20;
-    const { hexData, hexMeshes } = createHexGrid(scene, gridSize);
+    // Start screen settings
+    var selectedDifficulty = 'normal';
+    var selectedMapSize = 20;
 
-    // Camera
-    const { camera, controls, updateKeys } = setupCamera(renderer, gridSize);
+    // Grid & Camera — initialized after start screen
+    var gridSize = 20;
+    var hexData = null;
+    var hexMeshes = null;
+    var gridGroup = null;
+    var camera = null;
+    var controls = null;
+    var updateKeys = null;
+    var inputApi = null;
 
     // Building meshes tracked by hex key
-    const buildingMeshes = new Map();
+    var buildingMeshes = new Map();
 
     // Unit meshes tracked by hex key
-    const unitMeshes = new Map();
+    var unitMeshes = new Map();
 
     // Movement range highlight meshes
     var moveHighlights = [];
@@ -58,27 +68,32 @@ function init() {
     var reachableHexes = [];
 
     // Resource gathering particles
-    const gatherParticles = [];
+    var gatherParticles = [];
 
-    // Game state — initialized after race selection
-    let gameState = null;
+    // Game state
+    var gameState = null;
+    var gameStartTime = null;
+    var gameEnded = false;
+
+    // Tutorial state
+    var tutorialState = null;
 
     // DOM elements
-    const raceSelectEl = document.getElementById('race-select');
-    const resourceBarEl = document.getElementById('resource-bar');
-    const turnCounterEl = document.getElementById('turn-counter');
-    const turnNumberEl = document.getElementById('turn-number');
-    const endTurnBtn = document.getElementById('end-turn-btn');
-    const buildMenuEl = document.getElementById('build-menu');
-    const popBarEl = document.getElementById('pop-bar');
-    const minimapCanvas = document.getElementById('minimap-canvas');
-    const saveBtn = document.getElementById('save-btn');
-    const loadBtn = document.getElementById('load-btn');
-    const techTreeBtn = document.getElementById('tech-tree-btn');
-    const techTreePanel = document.getElementById('tech-tree-panel');
-    const techTreeClose = document.getElementById('tech-tree-close');
-    const techTreeContent = document.getElementById('tech-tree-content');
-    const researchStatusEl = document.getElementById('research-status');
+    var raceSelectEl = document.getElementById('race-select');
+    var resourceBarEl = document.getElementById('resource-bar');
+    var turnCounterEl = document.getElementById('turn-counter');
+    var turnNumberEl = document.getElementById('turn-number');
+    var endTurnBtn = document.getElementById('end-turn-btn');
+    var buildMenuEl = document.getElementById('build-menu');
+    var popBarEl = document.getElementById('pop-bar');
+    var minimapCanvas = document.getElementById('minimap-canvas');
+    var saveBtn = document.getElementById('save-btn');
+    var loadBtn = document.getElementById('load-btn');
+    var techTreeBtn = document.getElementById('tech-tree-btn');
+    var techTreePanel = document.getElementById('tech-tree-panel');
+    var techTreeClose = document.getElementById('tech-tree-close');
+    var techTreeContent = document.getElementById('tech-tree-content');
+    var researchStatusEl = document.getElementById('research-status');
     var eventToastEl = document.getElementById('event-toast');
     var eventToastCategory = document.getElementById('event-toast-category');
     var eventToastName = document.getElementById('event-toast-name');
@@ -94,16 +109,71 @@ function init() {
     var combatLogEl = document.getElementById('combat-log');
     var combatLogContent = document.getElementById('combat-log-content');
     var combatLogEntries = [];
+    var tutorialOverlay = document.getElementById('tutorial-overlay');
+    var gameOverScreen = document.getElementById('game-over-screen');
+    var gameOverTitle = document.getElementById('game-over-title');
+    var gameOverReason = document.getElementById('game-over-reason');
+    var gameOverStats = document.getElementById('game-over-stats');
+    var gameOverRestart = document.getElementById('game-over-restart');
+    var soundControlsEl = document.getElementById('sound-controls');
+    var sfxToggle = document.getElementById('sfx-toggle');
+    var musicToggle = document.getElementById('music-toggle');
+
+    // Previous resources for change indicators
+    var prevResources = null;
 
     // Storyteller state
     var storytellerState = null;
     var toastQueue = [];
     var toastShowing = false;
 
+    // ── Start Screen: Difficulty & Map Size ──
+    document.querySelectorAll('#difficulty-btns .start-option-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('#difficulty-btns .start-option-btn').forEach(function (b) {
+                b.classList.remove('active');
+            });
+            this.classList.add('active');
+            selectedDifficulty = this.getAttribute('data-difficulty');
+        });
+    });
+
+    document.querySelectorAll('#mapsize-btns .start-option-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('#mapsize-btns .start-option-btn').forEach(function (b) {
+                b.classList.remove('active');
+            });
+            this.classList.add('active');
+            selectedMapSize = parseInt(this.getAttribute('data-mapsize'));
+        });
+    });
+
+    // ── Sound Controls ──
+    if (sfxToggle) {
+        sfxToggle.addEventListener('click', function () {
+            var isActive = this.classList.toggle('active');
+            setSfxEnabled(isActive);
+        });
+    }
+    if (musicToggle) {
+        musicToggle.addEventListener('click', function () {
+            var isActive = this.classList.toggle('active');
+            setMusicEnabled(isActive);
+            if (isActive && !isMusicPlaying()) {
+                startMusic();
+            } else if (!isActive) {
+                stopMusic();
+            }
+        });
+    }
+
     // ── Race Selection ──
     document.querySelectorAll('.race-card').forEach(function (card) {
         card.addEventListener('click', function () {
+            initAudio();
+            playClick();
             var race = this.getAttribute('data-race');
+            initGrid(selectedMapSize);
             startGame(race);
         });
     });
@@ -114,17 +184,47 @@ function init() {
         if (hasSavedGame()) {
             continueBtn.classList.add('visible');
             continueBtn.addEventListener('click', function () {
+                initAudio();
                 var saved = loadGame();
                 if (saved) {
+                    initGrid(saved.mapSize || 20);
                     restoreGame(saved);
                 }
             });
         }
     }
 
+    function initGrid(size) {
+        gridSize = size;
+
+        // Clear existing grid if any
+        if (gridGroup) {
+            scene.remove(gridGroup);
+        }
+
+        var result = createHexGrid(scene, gridSize);
+        hexData = result.hexData;
+        hexMeshes = result.hexMeshes;
+        gridGroup = result.gridGroup;
+
+        // Setup camera
+        var camResult = setupCamera(renderer, gridSize);
+        camera = camResult.camera;
+        controls = camResult.controls;
+        updateKeys = camResult.updateKeys;
+
+        // Adjust fog for map size
+        scene.fog = new THREE.Fog(0x0a0a0f, gridSize * 2.5, gridSize * 4);
+    }
+
     function startGame(race) {
         gameState = createGameState(race);
+        gameState.difficulty = selectedDifficulty;
+        gameState.mapSize = selectedMapSize;
         storytellerState = createStorytellerState();
+        tutorialState = createTutorialState();
+        gameStartTime = Date.now();
+        gameEnded = false;
 
         // Place a free Town Center on a valid hex near the center
         var centerQ = Math.floor(gridSize / 2);
@@ -140,18 +240,33 @@ function init() {
         gameState.units = [];
         initBuildingHP(gameState);
         recalcPopulationCap(gameState);
+
+        // Setup input
+        setupInputSystem();
         updateFogOfWar();
         showHUD();
+
+        // Start music
+        startMusic();
+
+        // Show tutorial for turn 1
+        showTutorialSteps(1, 'start');
     }
 
     function restoreGame(state) {
         gameState = state;
+        gameEnded = false;
+        gameStartTime = Date.now();
 
         // Ensure new fields exist for older saves
         if (!gameState.population) gameState.population = { current: 5, cap: 5 };
         if (!gameState.hexImprovements) gameState.hexImprovements = [];
         if (!gameState.techState) gameState.techState = createTechState(gameState.race);
         if (!gameState.units) gameState.units = [];
+        if (!gameState.difficulty) gameState.difficulty = 'normal';
+        if (!gameState.mapSize) gameState.mapSize = 20;
+
+        selectedDifficulty = gameState.difficulty;
 
         // Restore or create storyteller state
         if (gameState.storyteller) {
@@ -159,6 +274,9 @@ function init() {
         } else {
             storytellerState = createStorytellerState();
         }
+
+        tutorialState = createTutorialState();
+        tutorialState.dismissed = true; // Skip tutorial on load
 
         // Rebuild building meshes from state
         for (var i = 0; i < gameState.buildings.length; i++) {
@@ -186,9 +304,34 @@ function init() {
         }
 
         recalcPopulationCap(gameState);
+        setupInputSystem();
         rebuildUnitMeshes();
         updateFogOfWar();
         showHUD();
+        startMusic();
+    }
+
+    function setupInputSystem() {
+        inputApi = setupInput(camera, hexMeshes, hexData, {
+            onSelect: function (key) {
+                if (gameEnded) return;
+                playClick();
+                if (key) {
+                    var unitHandled = handleUnitClick(key);
+                    if (!unitHandled) {
+                        showBuildMenu(key);
+                    } else {
+                        hideBuildMenu();
+                    }
+                } else {
+                    hideBuildMenu();
+                    deselectUnit();
+                }
+            },
+            getGameState: function () {
+                return gameState;
+            },
+        });
     }
 
     function showHUD() {
@@ -200,6 +343,7 @@ function init() {
         document.getElementById('save-load-bar').classList.add('visible');
         if (techTreeBtn) techTreeBtn.classList.add('visible');
         if (eventLogBtn) eventLogBtn.classList.add('visible');
+        if (soundControlsEl) soundControlsEl.classList.add('visible');
 
         updateResourceBar();
         updateTurnCounter();
@@ -207,6 +351,147 @@ function init() {
         updateResearchStatus();
         updateQuestPanel();
         drawMinimap();
+    }
+
+    // ── Tutorial System ──
+
+    function showTutorialSteps(turn, trigger) {
+        if (!tutorialState || tutorialState.dismissed) return;
+        var steps = getTutorialSteps(tutorialState, turn, trigger);
+        if (steps.length === 0) return;
+
+        var stepIdx = 0;
+        function showStep() {
+            if (stepIdx >= steps.length) {
+                tutorialOverlay.classList.remove('visible');
+                return;
+            }
+            var entry = steps[stepIdx];
+            var step = entry.step;
+            var total = steps.length;
+
+            var html = '<div class="tutorial-tooltip">';
+            html += '<div class="tutorial-step">Tip ' + (stepIdx + 1) + ' of ' + total + '</div>';
+            html += '<div class="tutorial-title">' + step.title + '</div>';
+            html += '<div class="tutorial-text">' + step.text + '</div>';
+            html += '<div class="tutorial-actions">';
+            html += '<button class="tutorial-btn" id="tutorial-next">' + (stepIdx < total - 1 ? 'Next' : 'Got it') + '</button>';
+            html += '<button class="tutorial-btn tutorial-skip" id="tutorial-skip">Skip All</button>';
+            html += '</div>';
+            html += '</div>';
+
+            tutorialOverlay.innerHTML = html;
+            tutorialOverlay.classList.add('visible');
+
+            markTutorialShown(tutorialState, entry.index);
+
+            document.getElementById('tutorial-next').addEventListener('click', function () {
+                stepIdx++;
+                showStep();
+            });
+            document.getElementById('tutorial-skip').addEventListener('click', function () {
+                dismissTutorial(tutorialState);
+                tutorialOverlay.classList.remove('visible');
+            });
+        }
+
+        showStep();
+    }
+
+    // ── Victory / Defeat Checking ──
+
+    function checkGameEnd() {
+        if (!gameState || gameEnded) return;
+
+        var victory = checkVictory(gameState, selectedDifficulty);
+        if (victory) {
+            gameEnded = true;
+            playVictory();
+            showGameOverScreen(true, victory.reason);
+            return;
+        }
+
+        var defeat = checkDefeat(gameState);
+        if (defeat) {
+            gameEnded = true;
+            playDefeat();
+            showGameOverScreen(false, defeat.reason);
+            return;
+        }
+    }
+
+    function showGameOverScreen(isVictory, reason) {
+        gameOverTitle.textContent = isVictory ? 'Victory!' : 'Defeat';
+        gameOverTitle.className = 'game-over-title ' + (isVictory ? 'victory' : 'defeat');
+        gameOverReason.textContent = reason;
+
+        var stats = collectStats(gameState, storytellerState, selectedDifficulty, gameStartTime);
+
+        var html = '';
+        var statRows = [
+            ['Race', stats.race.charAt(0).toUpperCase() + stats.race.slice(1)],
+            ['Difficulty', stats.difficulty.charAt(0).toUpperCase() + stats.difficulty.slice(1)],
+            ['Turns Played', stats.turns],
+            ['Play Time', stats.playTime],
+            ['Population', stats.population + '/' + stats.populationCap],
+            ['Buildings', stats.buildings],
+            ['Max Level', 'Lv.' + stats.maxBuildingLevel],
+            ['Units', stats.units],
+            ['Tech Researched', stats.techResearched],
+            ['Quests Completed', stats.questsCompleted],
+            ['Events', stats.eventsExperienced],
+            ['Total Resources', stats.totalResources],
+        ];
+
+        for (var i = 0; i < statRows.length; i++) {
+            html += '<div class="stat-row"><span class="stat-label">' + statRows[i][0] + '</span><span class="stat-value">' + statRows[i][1] + '</span></div>';
+        }
+
+        gameOverStats.innerHTML = html;
+        gameOverScreen.classList.add('visible');
+        stopMusic();
+    }
+
+    // Restart game
+    if (gameOverRestart) {
+        gameOverRestart.addEventListener('click', function () {
+            gameOverScreen.classList.remove('visible');
+
+            // Clear scene
+            buildingMeshes.forEach(function (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            buildingMeshes.clear();
+            unitMeshes.forEach(function (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            unitMeshes.clear();
+
+            gameState = null;
+            gameEnded = false;
+            combatLogEntries = [];
+            if (combatLogEl) combatLogEl.classList.remove('visible');
+
+            // Hide HUD
+            resourceBarEl.classList.remove('visible');
+            turnCounterEl.classList.remove('visible');
+            endTurnBtn.classList.remove('visible');
+            popBarEl.classList.remove('visible');
+            document.getElementById('save-load-bar').classList.remove('visible');
+            if (techTreeBtn) techTreeBtn.classList.remove('visible');
+            if (eventLogBtn) eventLogBtn.classList.remove('visible');
+            if (soundControlsEl) soundControlsEl.classList.remove('visible');
+            if (questPanelEl) questPanelEl.classList.remove('visible');
+            if (researchStatusEl) researchStatusEl.classList.remove('visible');
+            buildMenuEl.classList.remove('visible');
+
+            // Show start screen
+            raceSelectEl.classList.remove('hidden');
+        });
     }
 
     // ── Unit Helpers ──
@@ -226,10 +511,9 @@ function init() {
 
         for (var i = 0; i < gameState.units.length; i++) {
             var unit = gameState.units[i];
-            if (unit.turnsToReady > 0) continue; // Not visible until ready
+            if (unit.turnsToReady > 0) continue;
             var key = unit.q + ',' + unit.r;
 
-            // Only show units in visible hexes (fog of war)
             if (unit.owner !== 'player' && !visible.has(key)) continue;
 
             var mesh = createUnitMesh(unit.type, unit.q, unit.r, gameState.race, unit.owner);
@@ -244,7 +528,6 @@ function init() {
         if (!gameState) return;
         var visible = getVisibleHexes(gameState, hexData);
 
-        // Mark newly visible hexes as explored
         visible.forEach(function (key) {
             if (gameState.exploredHexes.indexOf(key) === -1) {
                 gameState.exploredHexes.push(key);
@@ -253,9 +536,8 @@ function init() {
 
         applyFogOfWar(hexMeshes, hexData, visible, gameState.exploredHexes);
 
-        // Update input system so hover/click respects fog
-        if (input && input.setVisibleHexes) {
-            input.setVisibleHexes(visible);
+        if (inputApi && inputApi.setVisibleHexes) {
+            inputApi.setVisibleHexes(visible);
         }
     }
 
@@ -308,7 +590,6 @@ function init() {
             combatLogEl.classList.remove('visible');
             return;
         }
-        // Show last 5 entries
         var recent = combatLogEntries.slice(-5);
         var html = '';
         for (var i = recent.length - 1; i >= 0; i--) {
@@ -345,7 +626,6 @@ function init() {
 
             if (isReachable) {
                 if (hasEnemy) {
-                    // Combat
                     var defender = null;
                     for (var d = 0; d < gameState.units.length; d++) {
                         if (gameState.units[d].q === clickQ && gameState.units[d].r === clickR && gameState.units[d].owner !== selectedUnit.owner) {
@@ -354,7 +634,6 @@ function init() {
                         }
                     }
                     if (defender) {
-                        // Apply rally bonus
                         var rallyBonus = getRallyBonus(selectedUnit, gameState);
                         var origAttack = UNIT_TYPES[selectedUnit.type].attack;
                         if (rallyBonus > 0) {
@@ -363,30 +642,24 @@ function init() {
 
                         var result = resolveCombat(selectedUnit, defender);
 
-                        // Restore original attack
                         if (rallyBonus > 0) {
                             UNIT_TYPES[selectedUnit.type].attack = origAttack;
                         }
 
                         addCombatLog(result.log);
+                        playCombat();
                         showToast('challenge', 'Combat', result.log, '');
 
-                        // If defender dead, move attacker to that hex
                         if (defender.hp <= 0) {
-                            // Remove defender
                             var defIdx = gameState.units.indexOf(defender);
                             if (defIdx >= 0) gameState.units.splice(defIdx, 1);
-                            // Move attacker
                             moveUnit(selectedUnit, clickQ, clickR, hexData);
                         } else if (selectedUnit.hp <= 0) {
-                            // Attacker defeated
                             var atkIdx = gameState.units.indexOf(selectedUnit);
                             if (atkIdx >= 0) gameState.units.splice(atkIdx, 1);
                         }
-                        // Otherwise both survive, attacker doesn't move
                     }
                 } else {
-                    // Normal move
                     moveUnit(selectedUnit, clickQ, clickR, hexData);
                 }
 
@@ -403,7 +676,6 @@ function init() {
             var unit = gameState.units[u];
             if (unit.q === clickQ && unit.r === clickR && unit.owner === 'player' && unit.turnsToReady <= 0) {
                 if (selectedUnit === unit) {
-                    // Clicking same unit deselects
                     deselectUnit();
                 } else {
                     selectedUnit = unit;
@@ -413,10 +685,9 @@ function init() {
             }
         }
 
-        // Clicked on empty hex with a unit selected — deselect
         if (selectedUnit) {
             deselectUnit();
-            return false; // Let normal hex selection happen
+            return false;
         }
 
         return false;
@@ -446,18 +717,15 @@ function init() {
         var key = q + ',' + r;
         var hex = hexData.get(key);
 
-        // Deduct cost
         gameState.resources = deductCost(buildingType, gameState.resources);
-
-        // Add to state
         addBuilding(gameState, buildingType, q, r, def.turnsToBuild);
         hex.building = { type: buildingType, turnsRemaining: def.turnsToBuild, level: 1 };
 
-        // Create 3D mesh with race color
         var mesh = createBuildingMesh(buildingType, q, r, def.turnsToBuild, 1, gameState.race);
         scene.add(mesh);
         buildingMeshes.set(key, mesh);
 
+        playBuild();
         updateResourceBar();
         updatePopBar();
         drawMinimap();
@@ -475,7 +743,6 @@ function init() {
             hex.building.level = nextLevel;
         }
 
-        // Replace mesh
         var oldMesh = buildingMeshes.get(key);
         if (oldMesh) {
             scene.remove(oldMesh);
@@ -486,6 +753,7 @@ function init() {
         scene.add(newMesh);
         buildingMeshes.set(key, newMesh);
 
+        playBuild();
         recalcPopulationCap(gameState);
         updateResourceBar();
         updatePopBar();
@@ -497,9 +765,19 @@ function init() {
         resourceBarEl.innerHTML = RESOURCE_TYPES.map(function (type) {
             var info = RESOURCE_INFO[type];
             var amount = gameState.resources[type] || 0;
+            var changeHtml = '';
+            if (prevResources) {
+                var diff = amount - (prevResources[type] || 0);
+                if (diff > 0) {
+                    changeHtml = '<span class="resource-change positive">+' + diff + '</span>';
+                } else if (diff < 0) {
+                    changeHtml = '<span class="resource-change negative">' + diff + '</span>';
+                }
+            }
             return '<div class="resource-item">' +
                 '<div class="resource-icon" style="background:' + info.color + '">' + info.icon + '</div>' +
                 '<span class="resource-amount">' + amount + '</span>' +
+                changeHtml +
                 '</div>';
         }).join('');
     }
@@ -553,6 +831,7 @@ function init() {
         eventToastText.textContent = item.text;
         eventToastResult.textContent = item.result || '';
         eventToastEl.classList.add('visible');
+        playEventNotification();
     }
 
     if (eventToastDismiss) {
@@ -662,7 +941,6 @@ function init() {
         if (hex.building) {
             var bType = hex.building.type;
             var bDef = BUILDING_TYPES[bType];
-            // Find building in state
             var buildingState = null;
             for (var i = 0; i < gameState.buildings.length; i++) {
                 var b = gameState.buildings[i];
@@ -687,7 +965,6 @@ function init() {
             if (hex.building.turnsRemaining > 0) {
                 html += '<div class="build-option-info">Under construction: ' + hex.building.turnsRemaining + ' turn' + (hex.building.turnsRemaining !== 1 ? 's' : '') + ' left</div>';
             } else {
-                // Production info (scaled by level)
                 var levelMul = LEVEL_MULTIPLIERS[level] || 1;
                 var producing = Object.entries(bDef.resourcesPerTurn)
                     .filter(function (e) { return e[1] > 0; })
@@ -697,7 +974,6 @@ function init() {
                     html += '<div class="build-option-info">Produces: ' + producing + '/turn</div>';
                 }
 
-                // Terrain bonus
                 var tBonus = TERRAIN_BONUSES[hex.terrain];
                 if (tBonus) {
                     var bonusParts = [];
@@ -785,11 +1061,13 @@ function init() {
                     var action = this.getAttribute('data-action');
                     if (action === 'add' && buildingState.workers < bDef.workerSlots && getAvailableWorkers(gameState) > 0) {
                         buildingState.workers++;
+                        playClick();
                     } else if (action === 'remove' && buildingState.workers > 0) {
                         buildingState.workers--;
+                        playClick();
                     }
                     updatePopBar();
-                    showBuildMenu(hexKey); // Refresh panel
+                    showBuildMenu(hexKey);
                 });
             });
 
@@ -816,6 +1094,7 @@ function init() {
                         updateFogOfWar();
                         drawMinimap();
                         var tDef = UNIT_TYPES[unitTypeKey];
+                        playBuild();
                         showToast('boon', 'Training', tDef.name + ' training begun (' + tDef.trainTurns + ' turns)', '');
                     }
                     showBuildMenu(hexKey);
@@ -831,8 +1110,8 @@ function init() {
 
         var html = '<div class="build-menu-title">Build</div>';
         for (var typeKey in raceBuildings) {
-            if (typeKey === 'town_center') continue; // Can't manually build
-            if (!unlockedBuildings.has(typeKey)) continue; // Not yet researched
+            if (typeKey === 'town_center') continue;
+            if (!unlockedBuildings.has(typeKey)) continue;
 
             var def = raceBuildings[typeKey];
             var check = canPlaceBuilding(typeKey, hex, gameState.resources);
@@ -913,6 +1192,7 @@ function init() {
                 }
                 startHexImprovement(gameState, hex.q, hex.r, bonus);
                 hex.improvement = { turnsRemaining: 3, bonus: bonus };
+                playBuild();
                 showBuildMenu(hexKey);
                 drawMinimap();
             });
@@ -937,7 +1217,6 @@ function init() {
 
         var html = '';
         var branchNames = { economy: 'Economy', military: 'Military', magic: 'Magic' };
-        var branchIcons = { economy: 'G', military: 'S', magic: 'M' };
 
         for (var branch in branches) {
             html += '<div class="tech-branch">';
@@ -950,7 +1229,6 @@ function init() {
                 var state = ts[techId];
                 var statusClass = 'tech-' + state.status;
 
-                // Draw connection lines for prerequisites
                 var prereqNames = [];
                 for (var p = 0; p < tech.prerequisites.length; p++) {
                     prereqNames.push(tree[tech.prerequisites[p]].name);
@@ -963,7 +1241,6 @@ function init() {
                     html += '<div class="tech-prereqs">Requires: ' + prereqNames.join(', ') + '</div>';
                 }
 
-                // Cost
                 var costParts = [];
                 for (var res in tech.cost) {
                     if (tech.cost[res] > 0) {
@@ -998,6 +1275,7 @@ function init() {
                 var check = canResearchTech(techId, race, ts, gameState.resources);
                 if (check.ok) {
                     gameState.resources = startResearch(techId, race, ts, gameState.resources);
+                    playClick();
                     updateResourceBar();
                     updateResearchStatus();
                     renderTechTree();
@@ -1006,7 +1284,6 @@ function init() {
         });
     }
 
-    // Tech tree toggle
     if (techTreeBtn) {
         techTreeBtn.addEventListener('click', function () {
             if (techTreePanel.classList.contains('visible')) {
@@ -1026,7 +1303,6 @@ function init() {
 
     // ── Resource Gathering Visualization ──
     function spawnGatherParticles(gathered) {
-        // For each building that produced, spawn particles rising from it
         for (var i = 0; i < gameState.buildings.length; i++) {
             var b = gameState.buildings[i];
             if (b.turnsRemaining > 0) continue;
@@ -1039,7 +1315,6 @@ function init() {
             if (!hasProduction) continue;
 
             var pos = axialToWorld(b.q, b.r);
-            // Determine dominant resource color
             var dominantRes = null;
             var maxAmt = 0;
             for (var res2 in def.resourcesPerTurn) {
@@ -1050,7 +1325,6 @@ function init() {
             }
             var pColor = dominantRes ? RESOURCE_INFO[dominantRes].color : '#ffffff';
 
-            // Create a small sprite/indicator
             var spriteMat = new THREE.SpriteMaterial({
                 color: new THREE.Color(pColor),
                 transparent: true,
@@ -1066,7 +1340,7 @@ function init() {
                 sprite: sprite,
                 startY: yStart,
                 life: 0,
-                maxLife: 60, // frames
+                maxLife: 60,
             });
         }
     }
@@ -1088,7 +1362,7 @@ function init() {
 
     // ── Minimap ──
     function drawMinimap() {
-        if (!minimapCanvas) return;
+        if (!minimapCanvas || !hexData) return;
         var ctx = minimapCanvas.getContext('2d');
         var w = minimapCanvas.width;
         var h = minimapCanvas.height;
@@ -1108,19 +1382,15 @@ function init() {
         hexData.forEach(function (hex, key) {
             var x = hex.q * cellW;
             var y = hex.r * cellH;
-
-            // Terrain base color
             ctx.fillStyle = terrainColors[hex.terrain] || '#333';
             ctx.fillRect(x, y, cellW, cellH);
 
-            // Building indicator
             if (hex.building) {
                 ctx.fillStyle = '#fbbf24';
                 var pad = cellW * 0.2;
                 ctx.fillRect(x + pad, y + pad, cellW - pad * 2, cellH - pad * 2);
             }
 
-            // Improvement indicator
             if (hex.improvement && hex.improvement.turnsRemaining <= 0) {
                 ctx.fillStyle = 'rgba(255,255,255,0.3)';
                 ctx.fillRect(x, y, cellW, cellH);
@@ -1187,6 +1457,7 @@ function init() {
         if (storytellerState) gameState.storyteller = storytellerState;
         if (combatLogEntries.length > 0) gameState.combatLog = combatLogEntries;
         if (saveGame(gameState)) {
+            playClick();
             saveBtn.textContent = 'Saved!';
             setTimeout(function () { saveBtn.textContent = 'Save'; }, 1000);
         }
@@ -1203,7 +1474,6 @@ function init() {
             });
             buildingMeshes.clear();
 
-            // Clear existing unit meshes
             unitMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
                 mesh.geometry.dispose();
@@ -1212,19 +1482,18 @@ function init() {
             unitMeshes.clear();
             deselectUnit();
 
-            // Restore combat log
             if (saved.combatLog) {
                 combatLogEntries = saved.combatLog;
                 updateCombatLog();
             }
 
-            // Clear hex data buildings/improvements
             hexData.forEach(function (hex) {
                 hex.building = null;
                 hex.improvement = null;
             });
 
             restoreGame(saved);
+            playClick();
             loadBtn.textContent = 'Loaded!';
             setTimeout(function () { loadBtn.textContent = 'Load'; }, 1000);
 
@@ -1236,10 +1505,17 @@ function init() {
 
     // ── End Turn ──
     endTurnBtn.addEventListener('click', function () {
-        if (!gameState) return;
+        if (!gameState || gameEnded) return;
+
+        // Store resources before turn for change indicators
+        prevResources = {};
+        for (var pr in gameState.resources) {
+            prevResources[pr] = gameState.resources[pr];
+        }
+
+        playTurnEnd();
 
         var result = processTurn(gameState, function onComplete(building) {
-            // Building finished construction
             var key = building.q + ',' + building.r;
             var hex = hexData.get(key);
             if (hex && hex.building) {
@@ -1256,7 +1532,6 @@ function init() {
             var key = building.q + ',' + building.r;
             var mesh = buildingMeshes.get(key);
             if (mesh) {
-                // Remove old mesh, create updated one
                 scene.remove(mesh);
                 mesh.geometry.dispose();
                 mesh.material.dispose();
@@ -1265,14 +1540,13 @@ function init() {
                 buildingMeshes.set(key, newMesh);
             }
 
-            // Sync hex data
             var hex = hexData.get(key);
             if (hex && hex.building) {
                 hex.building.turnsRemaining = building.turnsRemaining;
             }
         }
 
-        // Update hex improvements in hexData
+        // Update hex improvements
         if (gameState.hexImprovements) {
             for (var j = 0; j < gameState.hexImprovements.length; j++) {
                 var imp = gameState.hexImprovements[j];
@@ -1284,10 +1558,9 @@ function init() {
             }
         }
 
-        // Spawn resource gathering particles
         spawnGatherParticles(gathered);
 
-        // Process unit turn (refresh moves, training, hero abilities)
+        // Process unit turn
         deselectUnit();
         var unitResult = processUnitTurn(gameState, hexData);
         for (var ul = 0; ul < unitResult.logs.length; ul++) {
@@ -1302,27 +1575,24 @@ function init() {
         updateResearchStatus();
         drawMinimap();
 
-        // Process storyteller turn (events, quests)
+        // Process storyteller turn
         if (storytellerState) {
             var stResult = processStorytellerTurn(gameState, storytellerState, hexData);
 
-            // Show event toast
             if (stResult.event) {
                 showToast(stResult.event.category, stResult.event.name, stResult.event.text, stResult.event.result);
             }
 
-            // Show completed quests
             for (var cq = 0; cq < stResult.completedQuests.length; cq++) {
                 showToast('boon', 'Quest Complete!', stResult.completedQuests[cq].name, 'Rewards granted');
                 spawnCelebration();
+                playQuestComplete();
             }
 
-            // Show failed quests
             for (var fq = 0; fq < stResult.failedQuests.length; fq++) {
                 showToast('challenge', 'Quest Failed', stResult.failedQuests[fq].name, '');
             }
 
-            // Show new quest
             if (stResult.newQuest) {
                 showToast('story', 'New Quest', stResult.newQuest.name, stResult.newQuest.description);
             }
@@ -1340,27 +1610,18 @@ function init() {
         if (inputApi && inputApi.getSelectedKey()) {
             showBuildMenu(inputApi.getSelectedKey());
         }
-    });
 
-    // Input — connect with build menu callbacks
-    var inputApi = setupInput(camera, hexMeshes, hexData, {
-        onSelect: function (key) {
-            if (key) {
-                // Check if clicking on a unit first
-                var unitHandled = handleUnitClick(key);
-                if (!unitHandled) {
-                    showBuildMenu(key);
-                } else {
-                    hideBuildMenu();
-                }
-            } else {
-                hideBuildMenu();
-                deselectUnit();
-            }
-        },
-        getGameState: function () {
-            return gameState;
-        },
+        // Clear resource change indicators after a delay
+        setTimeout(function () {
+            prevResources = null;
+            updateResourceBar();
+        }, 3000);
+
+        // Show tutorial for this turn
+        showTutorialSteps(gameState.turn, 'turn');
+
+        // Check for victory/defeat
+        checkGameEnd();
     });
 
     // Handle resize
@@ -1369,13 +1630,46 @@ function init() {
     }
     window.addEventListener('resize', onResize);
 
+    // Touch support: treat touch as click for mobile
+    renderer.domElement.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 1) {
+            // Single finger tap — simulate click
+            var touch = e.touches[0];
+            var clickEvent = new MouseEvent('click', {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                bubbles: true,
+            });
+            // Delay to let touch gestures settle
+            var startX = touch.clientX;
+            var startY = touch.clientY;
+            function onTouchEnd(te) {
+                var endTouch = te.changedTouches[0];
+                var dx = endTouch.clientX - startX;
+                var dy = endTouch.clientY - startY;
+                // Only fire click if not dragging
+                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                    renderer.domElement.dispatchEvent(new MouseEvent('click', {
+                        clientX: endTouch.clientX,
+                        clientY: endTouch.clientY,
+                        bubbles: true,
+                    }));
+                }
+                renderer.domElement.removeEventListener('touchend', onTouchEnd);
+            }
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
+        }
+    }, { passive: true });
+
     // Animation loop
     function animate() {
         requestAnimationFrame(animate);
-        updateKeys();
+        if (updateKeys) updateKeys();
         updateParticles();
-        controls.update();
-        renderer.render(scene, camera);
+        if (controls) controls.update();
+        if (camera) {
+            renderer.render(scene, camera);
+        }
     }
 
     animate();

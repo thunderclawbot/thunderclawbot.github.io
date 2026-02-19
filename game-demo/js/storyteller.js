@@ -265,9 +265,9 @@ function executeRaid(state, hexData, raidType) {
         }
     }
 
-    // Base raid damage scales with turn
-    var baseDamage = 15 + Math.floor(state.turn * 1.5);
-    if (raidType === 'wolves') baseDamage = Math.floor(baseDamage * 0.6);
+    // Base raid damage scales with turn (balanced: slower escalation)
+    var baseDamage = 10 + Math.floor(state.turn * 1.0);
+    if (raidType === 'wolves') baseDamage = Math.floor(baseDamage * 0.5);
 
     var actualDamage = Math.max(5, baseDamage - defenseReduction);
 
@@ -357,8 +357,8 @@ function getEventWeights(state, stState) {
         weights[3] = 0;
     }
 
-    // Grace period: no challenges in the first 3 turns
-    if (state.turn <= 3) {
+    // Grace period: no challenges in the first 5 turns
+    if (state.turn <= 5) {
         weights[1] = 0;
     }
 
