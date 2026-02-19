@@ -827,12 +827,12 @@ function init() {
 
     function setupInputSystem() {
         inputApi = setupInput(camera, hexMeshes, hexData, {
-            onSelect: function (key) {
+            onSelect: async function (key) {
                 if (gameEnded) return;
                 if (isMultiplayerActive() && !getIsMyTurn()) return;
                 playClick();
                 if (key) {
-                    var unitHandled = handleUnitClick(key);
+                    var unitHandled = await handleUnitClick(key);
                     if (!unitHandled) {
                         showBuildMenu(key);
                     } else {
@@ -2090,6 +2090,8 @@ function init() {
                 hideBuildMenu();
             } else if (inputApi && inputApi.getSelectedKey()) {
                 showBuildMenu(inputApi.getSelectedKey());
+            } else {
+                showToast('story', 'Build', 'Select a hex first', '');
             }
         });
     }

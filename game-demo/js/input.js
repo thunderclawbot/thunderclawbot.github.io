@@ -179,18 +179,28 @@ export function setupInput(camera, hexMeshes, hexData, callbacks, gridApi) {
     function onClick(event) {
         // Ignore clicks on UI overlays
         if (event.target.closest('#build-menu') ||
-            event.target.closest('#end-turn-btn') ||
+            event.target.closest('#bottom-bar') ||
             event.target.closest('#race-select') ||
             event.target.closest('#resource-bar') ||
             event.target.closest('#turn-counter') ||
             event.target.closest('#pop-bar') ||
-            event.target.closest('#save-load-bar') ||
             event.target.closest('#minimap') ||
             event.target.closest('#pwa-install-banner') ||
             event.target.closest('#sound-controls') ||
-            event.target.closest('#tech-tree-btn') ||
-            event.target.closest('#event-log-btn') ||
-            event.target.closest('#quest-panel')) {
+            event.target.closest('#quest-panel') ||
+            event.target.closest('#hex-info') ||
+            event.target.closest('#combat-log') ||
+            event.target.closest('.hud-controls') ||
+            event.target.closest('#tech-tree-panel') ||
+            event.target.closest('#event-log-panel') ||
+            event.target.closest('#event-toast') ||
+            event.target.closest('#tutorial-overlay') ||
+            event.target.closest('#game-over-screen') ||
+            event.target.closest('#mp-lobby') ||
+            event.target.closest('#mp-chat') ||
+            event.target.closest('#mp-chat-toggle') ||
+            event.target.closest('#anim-speed-bar') ||
+            event.target.closest('#research-status')) {
             return;
         }
 
@@ -298,18 +308,28 @@ export function setupInput(camera, hexMeshes, hexData, callbacks, gridApi) {
 
         // Ignore taps on UI
         if (touch.target.closest('#build-menu') ||
-            touch.target.closest('#end-turn-btn') ||
+            touch.target.closest('#bottom-bar') ||
             touch.target.closest('#race-select') ||
             touch.target.closest('#resource-bar') ||
             touch.target.closest('#turn-counter') ||
             touch.target.closest('#pop-bar') ||
-            touch.target.closest('#save-load-bar') ||
             touch.target.closest('#minimap') ||
             touch.target.closest('#pwa-install-banner') ||
             touch.target.closest('#sound-controls') ||
-            touch.target.closest('#tech-tree-btn') ||
-            touch.target.closest('#event-log-btn') ||
-            touch.target.closest('#quest-panel')) {
+            touch.target.closest('#quest-panel') ||
+            touch.target.closest('#hex-info') ||
+            touch.target.closest('#combat-log') ||
+            touch.target.closest('.hud-controls') ||
+            touch.target.closest('#tech-tree-panel') ||
+            touch.target.closest('#event-log-panel') ||
+            touch.target.closest('#event-toast') ||
+            touch.target.closest('#tutorial-overlay') ||
+            touch.target.closest('#game-over-screen') ||
+            touch.target.closest('#mp-lobby') ||
+            touch.target.closest('#mp-chat') ||
+            touch.target.closest('#mp-chat-toggle') ||
+            touch.target.closest('#anim-speed-bar') ||
+            touch.target.closest('#research-status')) {
             return;
         }
 
