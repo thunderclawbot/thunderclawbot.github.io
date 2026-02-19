@@ -1161,14 +1161,13 @@ function init() {
         if (!aiState || !gameState) return;
 
         var visible = getVisibleHexes(gameState, hexData);
-        var exploredSet = new Set(gameState.exploredHexes);
 
         for (var i = 0; i < aiState.buildings.length; i++) {
             var b = aiState.buildings[i];
             var key = b.q + ',' + b.r;
 
-            // AI buildings visible only when explored by player
-            if (!exploredSet.has(key) && !visible.has(key)) continue;
+            // AI buildings visible only when in player's current vision range
+            if (!visible.has(key)) continue;
 
             var mesh = createBuildingMesh(b.type, b.q, b.r, b.turnsRemaining, b.level || 1, aiState.race);
             scene.add(mesh);

@@ -194,17 +194,23 @@ export function createHexGrid(scene, gridSize, mapData) {
 
     // ── Terrain props (trees, rocks, grass) ──
     var propGroup = new THREE.Group();
+    var propsByHex = new Map(); // hexKey -> [prop meshes]
     hexData.forEach(function (hex, key) {
         var propSeed = hex.q * 73856093 + hex.r * 19349663;
         var props = createTerrainProps(hex.terrain, propSeed);
-        for (var i = 0; i < props.length; i++) {
-            var prop = props[i];
-            var worldPos = axialToWorld(hex.q, hex.r);
-            prop.position.x += worldPos.x;
-            prop.position.y += HEX_HEIGHT;
-            prop.position.z += worldPos.z;
-            prop.userData.propHexKey = key;
-            propGroup.add(prop);
+        if (props.length > 0) {
+            var hexProps = [];
+            for (var i = 0; i < props.length; i++) {
+                var prop = props[i];
+                var worldPos = axialToWorld(hex.q, hex.r);
+                prop.position.x += worldPos.x;
+                prop.position.y += HEX_HEIGHT;
+                prop.position.z += worldPos.z;
+                prop.userData.propHexKey = key;
+                propGroup.add(prop);
+                hexProps.push(prop);
+            }
+            propsByHex.set(key, hexProps);
         }
     });
     gridGroup.add(propGroup);
@@ -245,7 +251,8 @@ export function createHexGrid(scene, gridSize, mapData) {
         // state: 'visible', 'explored', 'hidden'
         var info = hexLookup.get(key);
         if (!info) return;
-        if (state === 'visible') {
+        var isVisible = state === 'visible';
+        if (isVisible) {
             info.instancedMesh.setColorAt(info.instanceId, info.baseColor);
         } else if (state === 'explored') {
             _colorTmp.copy(info.baseColor).multiplyScalar(FOG_DIM_FACTOR);
@@ -254,9 +261,18 @@ export function createHexGrid(scene, gridSize, mapData) {
             info.instancedMesh.setColorAt(info.instanceId, FOG_DARK_COLOR);
         }
         info.instancedMesh.instanceColor.needsUpdate = true;
+
+        // Toggle terrain prop visibility
+        var hexProps = propsByHex.get(key);
+        if (hexProps) {
+            for (var p = 0; p < hexProps.length; p++) {
+                hexProps[p].visible = isVisible;
+            }
+        }
     }
 
     // Batch fog update — updates all hexes in one pass, then flags needsUpdate once per mesh
+    // Also toggles terrain prop visibility: only visible hexes show props
     function applyFogBatch(visibleHexes, exploredHexes) {
         var exploredSet = new Set(exploredHexes);
         var dirtyMeshes = new Set();
@@ -264,7 +280,8 @@ export function createHexGrid(scene, gridSize, mapData) {
         hexData.forEach(function (hex, key) {
             var info = hexLookup.get(key);
             if (!info) return;
-            if (visibleHexes.has(key)) {
+            var isVisible = visibleHexes.has(key);
+            if (isVisible) {
                 info.instancedMesh.setColorAt(info.instanceId, info.baseColor);
             } else if (exploredSet.has(key)) {
                 _colorTmp.copy(info.baseColor).multiplyScalar(FOG_DIM_FACTOR);
@@ -273,6 +290,14 @@ export function createHexGrid(scene, gridSize, mapData) {
                 info.instancedMesh.setColorAt(info.instanceId, FOG_DARK_COLOR);
             }
             dirtyMeshes.add(info.instancedMesh);
+
+            // Toggle terrain prop visibility
+            var hexProps = propsByHex.get(key);
+            if (hexProps) {
+                for (var p = 0; p < hexProps.length; p++) {
+                    hexProps[p].visible = isVisible;
+                }
+            }
         });
 
         dirtyMeshes.forEach(function (mesh) {
@@ -295,6 +320,7 @@ export function createHexGrid(scene, gridSize, mapData) {
         gridGroup: gridGroup,
         materials: materials,
         propGroup: propGroup,
+        propsByHex: propsByHex,
         // InstancedMesh API
         instancedMeshes: instancedMeshes,
         hexLookup: hexLookup,
