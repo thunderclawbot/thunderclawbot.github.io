@@ -1,4 +1,4 @@
-// input.js — Hex selection via raycasting
+// input.js — Hex selection via raycasting (InstancedMesh-aware)
 // Click/tap to select, hover for highlight, info overlay
 // Touch: long-press for tooltip, double-tap to center
 
@@ -11,15 +11,20 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 // Colors
-const HOVER_EMISSIVE = 0x333333;
-const SELECT_EMISSIVE = 0xfbbf24;
+const HOVER_TINT = new THREE.Color(0x333333);
+const SELECT_TINT = new THREE.Color(0xfbbf24);
 
-export function setupInput(camera, hexMeshes, hexData, callbacks) {
-    let hoveredMesh = null;
+export function setupInput(camera, hexMeshes, hexData, callbacks, gridApi) {
+    let hoveredKey = null;
     let selectedKey = null;
-    let visibleHexSet = new Set(); // Track which hexes are currently visible (not fogged)
+    let visibleHexSet = new Set();
 
-    const meshArray = Array.from(hexMeshes.values());
+    var instancedMeshes = gridApi ? gridApi.instancedMeshes : [];
+    var resolveHit = gridApi ? gridApi.resolveInstanceHit : null;
+    var setHexEmissiveTint = gridApi ? gridApi.setHexEmissiveTint : null;
+    var resetHexColor = gridApi ? gridApi.resetHexColor : null;
+    var hexLookup = gridApi ? gridApi.hexLookup : null;
+
     const overlay = document.getElementById('hex-info');
     const touchTooltip = document.getElementById('touch-tooltip');
 
@@ -27,12 +32,27 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
     const getGameState = callbacks && callbacks.getGameState;
     const onDoubleTap = callbacks && callbacks.onDoubleTap;
 
-    function getIntersected(event) {
+    function getIntersectedKey(event) {
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(meshArray, false);
-        return intersects.length > 0 ? intersects[0].object : null;
+
+        if (instancedMeshes.length > 0 && resolveHit) {
+            var intersects = raycaster.intersectObjects(instancedMeshes, false);
+            if (intersects.length > 0) {
+                var hit = intersects[0];
+                return resolveHit(hit.object, hit.instanceId);
+            }
+            return null;
+        }
+
+        // Fallback for non-instanced (shouldn't happen but safe)
+        var meshArray = Array.from(hexMeshes.values()).filter(function (m) { return m.isMesh; });
+        var intersects2 = raycaster.intersectObjects(meshArray, false);
+        if (intersects2.length > 0) {
+            return intersects2[0].object.userData.key || null;
+        }
+        return null;
     }
 
     function getIntersectedFromXY(clientX, clientY) {
@@ -44,28 +64,21 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
     }
 
     function clearHover() {
-        if (hoveredMesh && hoveredMesh.userData.key !== selectedKey) {
-            hoveredMesh.material = hoveredMesh._originalMaterial || hoveredMesh.material;
-            if (hoveredMesh._hoverMaterial) {
-                hoveredMesh._hoverMaterial.dispose();
-                hoveredMesh._hoverMaterial = null;
-            }
+        if (hoveredKey && hoveredKey !== selectedKey && resetHexColor) {
+            // If this hex is fogged, we need to re-apply fog rather than base color
+            // For simplicity, just reset to base — fog update will correct on next cycle
+            resetHexColor(hoveredKey);
         }
-        hoveredMesh = null;
+        hoveredKey = null;
     }
 
-    function setHover(mesh) {
-        if (mesh.userData.key === selectedKey) return;
-        // Don't hover on fogged hexes
-        if (!visibleHexSet.has(mesh.userData.key)) return;
-        if (!mesh._originalMaterial) {
-            mesh._originalMaterial = mesh.material;
+    function setHover(key) {
+        if (key === selectedKey) return;
+        if (!visibleHexSet.has(key)) return;
+        if (setHexEmissiveTint) {
+            setHexEmissiveTint(key, HOVER_TINT, 0.4);
         }
-        const hoverMat = mesh.material.clone();
-        hoverMat.emissive = new THREE.Color(HOVER_EMISSIVE);
-        mesh._hoverMaterial = hoverMat;
-        mesh.material = hoverMat;
-        hoveredMesh = mesh;
+        hoveredKey = key;
     }
 
     function updateOverlay(key) {
@@ -73,7 +86,6 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
             overlay.classList.remove('visible');
             return;
         }
-        // Don't show info for fogged hexes
         if (!visibleHexSet.has(key)) {
             overlay.classList.remove('visible');
             return;
@@ -140,31 +152,14 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
 
     function selectHex(key) {
         // Deselect previous
-        if (selectedKey) {
-            const prevMesh = hexMeshes.get(selectedKey);
-            if (prevMesh) {
-                prevMesh.material = prevMesh._originalMaterial || prevMesh.material;
-                if (prevMesh._selectMaterial) {
-                    prevMesh._selectMaterial.dispose();
-                    prevMesh._selectMaterial = null;
-                }
-            }
+        if (selectedKey && resetHexColor) {
+            resetHexColor(selectedKey);
         }
 
         selectedKey = key;
 
-        if (key) {
-            const mesh = hexMeshes.get(key);
-            if (mesh) {
-                if (!mesh._originalMaterial) {
-                    mesh._originalMaterial = mesh.material;
-                }
-                const selMat = mesh.material.clone();
-                selMat.emissive = new THREE.Color(SELECT_EMISSIVE);
-                selMat.emissiveIntensity = 0.4;
-                mesh._selectMaterial = selMat;
-                mesh.material = selMat;
-            }
+        if (key && setHexEmissiveTint) {
+            setHexEmissiveTint(key, SELECT_TINT, 0.5);
         }
 
         updateOverlay(key);
@@ -173,10 +168,10 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
 
     // Mouse move — hover
     function onMouseMove(event) {
-        const hit = getIntersected(event);
-        if (hit !== hoveredMesh) {
+        var hitKey = getIntersectedKey(event);
+        if (hitKey !== hoveredKey) {
             clearHover();
-            if (hit) setHover(hit);
+            if (hitKey) setHover(hitKey);
         }
     }
 
@@ -199,9 +194,9 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
             return;
         }
 
-        const hit = getIntersected(event);
-        if (hit && visibleHexSet.has(hit.userData.key)) {
-            selectHex(hit.userData.key);
+        var hitKey = getIntersectedKey(event);
+        if (hitKey && visibleHexSet.has(hitKey)) {
+            selectHex(hitKey);
         } else {
             selectHex(null);
         }
