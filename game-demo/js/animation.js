@@ -384,14 +384,23 @@ export function isReplaying() {
     return _isReplaying;
 }
 
+// ── Check if a hex is visible to the player ──
+function isHexVisible(q, r, visibleHexes) {
+    if (!visibleHexes) return true; // no fog data → show everything
+    if (q === undefined || r === undefined) return true; // no position → allow (e.g. storyteller)
+    return visibleHexes.has(q + ',' + r);
+}
+
 // ── Turn replay: plays events sequentially with camera following ──
 // events: array of { type, q, r, data }
-// ctx: { controls, camera, scene, ... } — dependencies
+// ctx: { controls, camera, scene, visibleHexes, ... } — dependencies
 export async function playTurnAnimations(events, ctx) {
     if (!events || events.length === 0) return;
 
     _isReplaying = true;
     _skipRequested = false;
+
+    var visibleHexes = ctx.visibleHexes || null;
 
     // Show speed controls
     var speedBar = document.getElementById('anim-speed-bar');
@@ -401,6 +410,12 @@ export async function playTurnAnimations(events, ctx) {
         if (_skipRequested) break;
 
         var event = events[i];
+
+        // Check fog of war visibility — skip hidden events entirely
+        var hexVisible = isHexVisible(event.q, event.r, visibleHexes);
+        if (!hexVisible && event.type !== 'fog_summary') {
+            continue; // invisible: no camera pan, no animation
+        }
 
         // Pan camera to event location
         if (event.q !== undefined && event.r !== undefined) {
@@ -448,6 +463,10 @@ export async function playTurnAnimations(events, ctx) {
 
             case 'ai_action':
                 // Generic AI action — just show briefly
+                break;
+
+            case 'fog_summary':
+                // No camera pan or visual — log-only event handled by caller
                 break;
         }
 

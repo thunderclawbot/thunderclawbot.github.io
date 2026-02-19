@@ -2509,8 +2509,11 @@ function init() {
             }
         }
 
-        // Play player turn animations
-        var animCtx = { controls: controls, camera: camera, scene: scene };
+        // Compute visible hexes for fog-of-war replay filtering
+        var replayVisible = getVisibleHexes(gameState, hexData);
+
+        // Play player turn animations (player events are all on player hexes, so visible)
+        var animCtx = { controls: controls, camera: camera, scene: scene, visibleHexes: replayVisible };
         await playTurnAnimations(animEvents, animCtx);
 
         // Show storyteller toasts after animation completes
@@ -2537,7 +2540,7 @@ function init() {
             updateResourceBar();
         }
 
-        // ── Process AI opponent turn (with replay) ──
+        // ── Process AI opponent turn (with fog-aware replay) ──
         if (aiState) {
             showEnemyThinking();
             await delay(400);
@@ -2553,56 +2556,113 @@ function init() {
 
             hideEnemyThinking();
 
-            // Show AI combat/action logs
-            for (var al = 0; al < aiResult.logs.length; al++) {
-                addCombatLog(aiResult.logs[al]);
-            }
+            // Vague fog log messages for hidden activity
+            var fogMessages = [
+                'Distant sounds of battle echo across the land...',
+                'Something stirs in the darkness...',
+                'Unfamiliar sounds drift from the fog...',
+                'The ground trembles faintly in the distance...',
+                'Smoke rises from beyond the horizon...',
+            ];
 
-            // Build AI animation events
+            // Build AI animation events — filter by fog of war visibility
             var aiAnimEvents = [];
+            var foggedActionCount = 0;
 
-            // AI built buildings
+            // AI built buildings — only show if hex is visible to player
             for (var abb = 0; abb < aiResult.builtBuildings.length; abb++) {
-                // Find the building that was just built
                 for (var abi = aiState.buildings.length - 1; abi >= 0; abi--) {
                     if (aiState.buildings[abi].type === aiResult.builtBuildings[abb]) {
-                        aiAnimEvents.push({
-                            type: 'ai_action',
-                            q: aiState.buildings[abi].q,
-                            r: aiState.buildings[abi].r,
-                        });
+                        var abKey = aiState.buildings[abi].q + ',' + aiState.buildings[abi].r;
+                        if (replayVisible.has(abKey)) {
+                            aiAnimEvents.push({
+                                type: 'ai_action',
+                                q: aiState.buildings[abi].q,
+                                r: aiState.buildings[abi].r,
+                            });
+                            addCombatLog('AI: constructed ' + aiResult.builtBuildings[abb]);
+                        } else {
+                            foggedActionCount++;
+                        }
                         break;
                     }
                 }
             }
 
-            // AI attacks — show combat location
+            // AI attacks — check visibility of both attacker and defender positions
             for (var atk = 0; atk < aiResult.attacks.length; atk++) {
-                // Find the attacker position from current AI units
-                if (aiState.units.length > 0) {
-                    var combatUnit = aiState.units[Math.min(atk, aiState.units.length - 1)];
-                    aiAnimEvents.push({
-                        type: 'ai_action',
-                        q: combatUnit.q,
-                        r: combatUnit.r,
-                    });
+                var atkLog = aiResult.logs[atk] || '';
+
+                // Try to find the player unit that was attacked (its position is visible)
+                var playerUnitInvolved = false;
+                if (gameState.units) {
+                    for (var pui = 0; pui < gameState.units.length; pui++) {
+                        var pu = gameState.units[pui];
+                        if (pu.owner === 'player') {
+                            var puKey = pu.q + ',' + pu.r;
+                            if (replayVisible.has(puKey)) {
+                                // Show combat at the player unit's location (don't reveal enemy base)
+                                aiAnimEvents.push({
+                                    type: 'ai_action',
+                                    q: pu.q,
+                                    r: pu.r,
+                                });
+                                addCombatLog(atkLog);
+                                playerUnitInvolved = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!playerUnitInvolved) {
+                    // Check if attacker hex is visible
+                    if (aiState.units.length > 0) {
+                        var combatUnit = aiState.units[Math.min(atk, aiState.units.length - 1)];
+                        var cuKey = combatUnit.q + ',' + combatUnit.r;
+                        if (replayVisible.has(cuKey)) {
+                            aiAnimEvents.push({
+                                type: 'ai_action',
+                                q: combatUnit.q,
+                                r: combatUnit.r,
+                            });
+                            addCombatLog(atkLog);
+                        } else {
+                            foggedActionCount++;
+                        }
+                    }
                 }
             }
 
-            // Play AI replay with camera follow
+            // Add remaining AI logs that aren't attack logs (building damage, etc.)
+            var attackLogCount = aiResult.attacks.length;
+            for (var al = attackLogCount; al < aiResult.logs.length; al++) {
+                addCombatLog(aiResult.logs[al]);
+            }
+
+            // If any actions were hidden in fog, show a vague summary log entry
+            if (foggedActionCount > 0) {
+                var fogMsg = fogMessages[Math.floor(Math.random() * fogMessages.length)];
+                addCombatLog(fogMsg);
+            }
+
+            // Play AI replay with camera follow (visibleHexes filter is in animCtx)
             await playTurnAnimations(aiAnimEvents, animCtx);
 
-            // Show toast for significant AI events
-            if (aiResult.attacks.length > 0) {
+            // Show toast for significant AI events — only for visible ones
+            var visibleAttacks = aiAnimEvents.filter(function (e) { return e.type === 'ai_action'; }).length;
+            if (aiResult.attacks.length > 0 && visibleAttacks > 0) {
                 showToast('challenge', 'Enemy Attack', 'The enemy forces are attacking!', aiResult.logs.slice(-1)[0] || '');
+            } else if (foggedActionCount > 0 && visibleAttacks === 0) {
+                // All actions were in fog — show vague toast
+                showToast('story', 'Unknown Activity', 'Something stirs beyond your borders...', '');
             } else if (aiResult.builtBuildings.length > 0) {
-                var aiVisible = getVisibleHexes(gameState, hexData);
-                var anyVisible = false;
+                var anyBuildVisible = false;
                 for (var avi = 0; avi < aiState.buildings.length; avi++) {
                     var avKey = aiState.buildings[avi].q + ',' + aiState.buildings[avi].r;
-                    if (aiVisible.has(avKey)) { anyVisible = true; break; }
+                    if (replayVisible.has(avKey)) { anyBuildVisible = true; break; }
                 }
-                if (anyVisible) {
+                if (anyBuildVisible) {
                     showToast('story', 'Enemy Activity', 'The enemy settlement is expanding.', '');
                 }
             }
