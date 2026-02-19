@@ -1,5 +1,6 @@
 // input.js — Hex selection via raycasting
-// Click to select, hover for highlight, info overlay
+// Click/tap to select, hover for highlight, info overlay
+// Touch: long-press for tooltip, double-tap to center
 
 import * as THREE from 'three';
 import { TERRAIN } from './hex-grid.js';
@@ -20,13 +21,23 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
 
     const meshArray = Array.from(hexMeshes.values());
     const overlay = document.getElementById('hex-info');
+    const touchTooltip = document.getElementById('touch-tooltip');
 
     const onSelect = callbacks && callbacks.onSelect;
     const getGameState = callbacks && callbacks.getGameState;
+    const onDoubleTap = callbacks && callbacks.onDoubleTap;
 
     function getIntersected(event) {
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(meshArray, false);
+        return intersects.length > 0 ? intersects[0].object : null;
+    }
+
+    function getIntersectedFromXY(clientX, clientY) {
+        mouse.x = (clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(clientY / window.innerHeight) * 2 + 1;
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(meshArray, false);
         return intersects.length > 0 ? intersects[0].object : null;
@@ -179,7 +190,12 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
             event.target.closest('#turn-counter') ||
             event.target.closest('#pop-bar') ||
             event.target.closest('#save-load-bar') ||
-            event.target.closest('#minimap')) {
+            event.target.closest('#minimap') ||
+            event.target.closest('#pwa-install-banner') ||
+            event.target.closest('#sound-controls') ||
+            event.target.closest('#tech-tree-btn') ||
+            event.target.closest('#event-log-btn') ||
+            event.target.closest('#quest-panel')) {
             return;
         }
 
@@ -193,6 +209,143 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('click', onClick);
+
+    // ── Touch gesture handling ──
+    var longPressTimer = null;
+    var lastTapTime = 0;
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var isTouchDrag = false;
+
+    function showTouchTooltip(clientX, clientY, key) {
+        if (!touchTooltip || !key) return;
+        if (!visibleHexSet.has(key)) return;
+        var data = hexData.get(key);
+        if (!data) return;
+
+        var terrain = TERRAIN[data.terrain];
+        var label = terrain ? terrain.name : data.terrain;
+        var html = label;
+
+        if (data.building) {
+            var def = BUILDING_TYPES[data.building.type];
+            html += '<br>' + def.name;
+        }
+
+        var gs = getGameState ? getGameState() : null;
+        if (gs && gs.units) {
+            for (var i = 0; i < gs.units.length; i++) {
+                var u = gs.units[i];
+                if (u.q === data.q && u.r === data.r) {
+                    var uDef = UNIT_TYPES[u.type];
+                    if (uDef) html += '<br>' + uDef.name + ' HP:' + u.hp + '/' + u.maxHp;
+                }
+            }
+        }
+
+        touchTooltip.innerHTML = html;
+        touchTooltip.style.left = Math.min(clientX, window.innerWidth - 210) + 'px';
+        touchTooltip.style.top = (clientY - 60) + 'px';
+        touchTooltip.classList.add('visible');
+    }
+
+    function hideTouchTooltip() {
+        if (touchTooltip) touchTooltip.classList.remove('visible');
+    }
+
+    function onTouchStart(e) {
+        if (e.touches.length !== 1) {
+            // Multi-touch — let OrbitControls handle (pinch/pan)
+            clearTimeout(longPressTimer);
+            hideTouchTooltip();
+            return;
+        }
+
+        var touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        isTouchDrag = false;
+
+        // Long-press detection (500ms)
+        longPressTimer = setTimeout(function () {
+            var hit = getIntersectedFromXY(touchStartX, touchStartY);
+            if (hit && visibleHexSet.has(hit.userData.key)) {
+                showTouchTooltip(touchStartX, touchStartY, hit.userData.key);
+            }
+        }, 500);
+    }
+
+    function onTouchMove(e) {
+        if (e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        var dx = touch.clientX - touchStartX;
+        var dy = touch.clientY - touchStartY;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            isTouchDrag = true;
+            clearTimeout(longPressTimer);
+            hideTouchTooltip();
+        }
+    }
+
+    function onTouchEnd(e) {
+        clearTimeout(longPressTimer);
+        hideTouchTooltip();
+
+        if (isTouchDrag) return;
+        if (e.changedTouches.length === 0) return;
+
+        var touch = e.changedTouches[0];
+        var dx = touch.clientX - touchStartX;
+        var dy = touch.clientY - touchStartY;
+
+        // Only fire tap if finger didn't move much
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+
+        // Ignore taps on UI
+        if (touch.target.closest('#build-menu') ||
+            touch.target.closest('#end-turn-btn') ||
+            touch.target.closest('#race-select') ||
+            touch.target.closest('#resource-bar') ||
+            touch.target.closest('#turn-counter') ||
+            touch.target.closest('#pop-bar') ||
+            touch.target.closest('#save-load-bar') ||
+            touch.target.closest('#minimap') ||
+            touch.target.closest('#pwa-install-banner') ||
+            touch.target.closest('#sound-controls') ||
+            touch.target.closest('#tech-tree-btn') ||
+            touch.target.closest('#event-log-btn') ||
+            touch.target.closest('#quest-panel')) {
+            return;
+        }
+
+        var now = Date.now();
+        var hit = getIntersectedFromXY(touch.clientX, touch.clientY);
+
+        // Double-tap detection (300ms window)
+        if (now - lastTapTime < 300 && hit && visibleHexSet.has(hit.userData.key)) {
+            // Double-tap: center camera on hex
+            if (onDoubleTap) {
+                onDoubleTap(hit.userData.key);
+            }
+            lastTapTime = 0;
+            return;
+        }
+
+        lastTapTime = now;
+
+        // Single tap: select hex
+        if (hit && visibleHexSet.has(hit.userData.key)) {
+            selectHex(hit.userData.key);
+        } else {
+            selectHex(null);
+        }
+    }
+
+    // Use passive: false for touchstart so we can still detect gestures
+    // But touchmove/touchend can be passive
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
 
     return {
         selectHex,

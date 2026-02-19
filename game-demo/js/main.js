@@ -59,7 +59,11 @@ function init() {
     var camera = null;
     var controls = null;
     var updateKeys = null;
+    var cameraPanTo = null;
     var inputApi = null;
+
+    // Detect mobile/touch device
+    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
 
     // Building meshes tracked by hex key
     var buildingMeshes = new Map();
@@ -681,6 +685,7 @@ function init() {
         camera = camResult.camera;
         controls = camResult.controls;
         updateKeys = camResult.updateKeys;
+        cameraPanTo = camResult.panTo;
 
         // Adjust fog for map size
         scene.fog = new THREE.Fog(0x0a0a0f, gridSize * 2.5, gridSize * 4);
@@ -826,6 +831,16 @@ function init() {
             },
             getGameState: function () {
                 return gameState;
+            },
+            onDoubleTap: function (key) {
+                // Center camera on hex
+                if (cameraPanTo && hexData) {
+                    var data = hexData.get(key);
+                    if (data) {
+                        var pos = axialToWorld(data.q, data.r);
+                        cameraPanTo(pos.x, pos.z);
+                    }
+                }
             },
         });
     }
@@ -2582,36 +2597,43 @@ function init() {
     }
     window.addEventListener('resize', onResize);
 
-    // Touch support: treat touch as click for mobile
-    renderer.domElement.addEventListener('touchstart', function (e) {
-        if (e.touches.length === 1) {
-            // Single finger tap — simulate click
-            var touch = e.touches[0];
-            var clickEvent = new MouseEvent('click', {
-                clientX: touch.clientX,
-                clientY: touch.clientY,
-                bubbles: true,
-            });
-            // Delay to let touch gestures settle
-            var startX = touch.clientX;
-            var startY = touch.clientY;
-            function onTouchEnd(te) {
-                var endTouch = te.changedTouches[0];
-                var dx = endTouch.clientX - startX;
-                var dy = endTouch.clientY - startY;
-                // Only fire click if not dragging
-                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-                    renderer.domElement.dispatchEvent(new MouseEvent('click', {
-                        clientX: endTouch.clientX,
-                        clientY: endTouch.clientY,
-                        bubbles: true,
-                    }));
+    // Mobile quality reduction
+    if (isMobile) {
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        // Simpler fog for mobile
+        scene.fog = new THREE.Fog(0x0a0a0f, 40, 80);
+    }
+
+    // Quest panel collapse toggle on mobile
+    if (questPanelEl) {
+        var questTitle = questPanelEl.querySelector('.quest-panel-title');
+        if (questTitle) {
+            questTitle.addEventListener('click', function () {
+                if (window.innerWidth <= 768) {
+                    questPanelEl.classList.toggle('collapsed');
                 }
-                renderer.domElement.removeEventListener('touchend', onTouchEnd);
-            }
-            renderer.domElement.addEventListener('touchend', onTouchEnd);
+            });
         }
-    }, { passive: true });
+    }
+
+    // Swipe gesture to dismiss build menu on mobile
+    (function () {
+        var swipeStartY = 0;
+        buildMenuEl.addEventListener('touchstart', function (e) {
+            if (e.touches.length === 1) {
+                swipeStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+        buildMenuEl.addEventListener('touchmove', function (e) {
+            if (e.touches.length === 1) {
+                var dy = e.touches[0].clientY - swipeStartY;
+                if (dy > 60) {
+                    buildMenuEl.classList.remove('visible');
+                    swipeStartY = 0;
+                }
+            }
+        }, { passive: true });
+    })();
 
     // Animation loop
     var animClock = new THREE.Clock();
