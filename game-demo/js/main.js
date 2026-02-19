@@ -15,6 +15,7 @@ import { initAudio, playClick, playBuild, playTurnEnd, playEventNotification, pl
 import { createTutorialState, getTutorialSteps, markTutorialShown, dismissTutorial, isTutorialComplete } from './tutorial.js';
 import { checkVictory, checkDefeat, collectStats } from './victory.js';
 import { createAIState, processAITurn, getAITownCenter, checkAIDefeated } from './ai-opponent.js';
+import { createRoom, joinRoom, sendAction, sendChat, sendStateSync, setReady, leaveRoom, getRoomCode, getIsHost, getIsMyTurn, setIsMyTurn, isMultiplayerActive, getOpponentRace, getOpponentReady } from './multiplayer.js';
 
 function init() {
     // Renderer
@@ -124,6 +125,37 @@ function init() {
     var sfxToggle = document.getElementById('sfx-toggle');
     var musicToggle = document.getElementById('music-toggle');
 
+    // ── Multiplayer DOM elements ──
+    var mpBtn = document.getElementById('mp-btn');
+    var mpLobby = document.getElementById('mp-lobby');
+    var mpLobbyMenu = document.getElementById('mp-lobby-menu');
+    var mpLobbyRoom = document.getElementById('mp-lobby-room');
+    var mpHostBtn = document.getElementById('mp-host-btn');
+    var mpJoinBtn = document.getElementById('mp-join-btn');
+    var mpJoinCode = document.getElementById('mp-join-code');
+    var mpLobbyClose = document.getElementById('mp-lobby-close');
+    var mpRoomCodeDisplay = document.getElementById('mp-room-code-display');
+    var mpPlayersList = document.getElementById('mp-players-list');
+    var mpReadyBtn = document.getElementById('mp-ready-btn');
+    var mpStartBtn = document.getElementById('mp-start-btn');
+    var mpLeaveBtn = document.getElementById('mp-leave-btn');
+    var mpStatusEl = document.getElementById('mp-status');
+    var mpStatusDot = document.getElementById('mp-status-dot');
+    var mpStatusText = document.getElementById('mp-status-text');
+    var mpWaiting = document.getElementById('mp-waiting');
+    var mpChatToggle = document.getElementById('mp-chat-toggle');
+    var mpChat = document.getElementById('mp-chat');
+    var mpChatClose = document.getElementById('mp-chat-close');
+    var mpChatMessages = document.getElementById('mp-chat-messages');
+    var mpChatInput = document.getElementById('mp-chat-input');
+    var mpChatSend = document.getElementById('mp-chat-send');
+    var mpDisconnectNotice = document.getElementById('mp-disconnect-notice');
+    var mpDisconnectDismiss = document.getElementById('mp-disconnect-dismiss');
+
+    // Multiplayer state
+    var mpSelectedRace = null;
+    var mpReady = false;
+
     // Previous resources for change indicators
     var prevResources = null;
 
@@ -170,6 +202,331 @@ function init() {
                 stopMusic();
             }
         });
+    }
+
+    // ── Multiplayer Lobby UI ──
+    if (mpBtn) {
+        mpBtn.addEventListener('click', function () {
+            playClick();
+            mpLobby.classList.add('visible');
+            mpLobbyMenu.style.display = '';
+            mpLobbyRoom.style.display = 'none';
+        });
+    }
+
+    if (mpLobbyClose) {
+        mpLobbyClose.addEventListener('click', function () {
+            mpLobby.classList.remove('visible');
+        });
+    }
+
+    function mpGetSelectedRace() {
+        // Use the race that is currently hovered/selected on start screen
+        // Default to human
+        return mpSelectedRace || 'human';
+    }
+
+    // Track race selection for multiplayer
+    document.querySelectorAll('.race-card').forEach(function (card) {
+        card.addEventListener('mouseenter', function () {
+            mpSelectedRace = this.getAttribute('data-race');
+        });
+    });
+
+    if (mpHostBtn) {
+        mpHostBtn.addEventListener('click', function () {
+            playClick();
+            var race = mpGetSelectedRace();
+            var code = createRoom(race, createMpCallbacks());
+            if (code) {
+                mpLobbyMenu.style.display = 'none';
+                mpLobbyRoom.style.display = '';
+                mpRoomCodeDisplay.textContent = code;
+                mpReadyBtn.disabled = false;
+                mpReady = false;
+                updateMpPlayersList([{ playerId: 'you', race: race, isHost: true, ready: false }]);
+            }
+        });
+    }
+
+    if (mpJoinBtn) {
+        mpJoinBtn.addEventListener('click', function () {
+            var code = mpJoinCode.value.trim();
+            if (code.length !== 4) return;
+            playClick();
+            var race = mpGetSelectedRace();
+            joinRoom(code, race, createMpCallbacks());
+            mpLobbyMenu.style.display = 'none';
+            mpLobbyRoom.style.display = '';
+            mpRoomCodeDisplay.textContent = code.toUpperCase();
+            mpReadyBtn.disabled = false;
+            mpReady = false;
+            updateMpPlayersList([{ playerId: 'you', race: race, isHost: false, ready: false }]);
+        });
+    }
+
+    if (mpReadyBtn) {
+        mpReadyBtn.addEventListener('click', function () {
+            playClick();
+            mpReady = true;
+            var race = mpGetSelectedRace();
+            setReady(race);
+            mpReadyBtn.disabled = true;
+            mpReadyBtn.textContent = 'Ready!';
+        });
+    }
+
+    if (mpStartBtn) {
+        mpStartBtn.addEventListener('click', function () {
+            playClick();
+            // Host starts the game — broadcast start action
+            var race = mpGetSelectedRace();
+            sendAction({ type: 'start-game', race: race, mapSize: selectedMapSize, difficulty: selectedDifficulty });
+            mpLobby.classList.remove('visible');
+            initAudio();
+            initGrid(selectedMapSize);
+            startMultiplayerGame(race);
+        });
+    }
+
+    if (mpLeaveBtn) {
+        mpLeaveBtn.addEventListener('click', function () {
+            playClick();
+            leaveRoom();
+            mpLobbyMenu.style.display = '';
+            mpLobbyRoom.style.display = 'none';
+            mpReady = false;
+            mpReadyBtn.textContent = 'Ready';
+            mpReadyBtn.disabled = true;
+        });
+    }
+
+    function createMpCallbacks() {
+        return {
+            onPresence: function (data) {
+                updateMpPlayersList(data.players);
+                // Show start button when host and both ready
+                if (getIsHost() && data.opponentReady && mpReady && data.opponentId) {
+                    mpStartBtn.style.display = '';
+                } else {
+                    mpStartBtn.style.display = 'none';
+                }
+            },
+            onAction: function (data) {
+                handleMpAction(data);
+            },
+            onChat: function (data) {
+                appendChatMessage(data.from, data.text);
+            },
+            onDisconnect: function () {
+                mpStatusDot.classList.add('disconnected');
+                mpStatusText.textContent = 'Disconnected';
+                mpDisconnectNotice.classList.add('visible');
+            },
+            onReconnect: function () {
+                mpStatusDot.classList.remove('disconnected');
+                mpStatusText.textContent = 'Connected';
+                mpDisconnectNotice.classList.remove('visible');
+            },
+            onForfeit: function () {
+                mpDisconnectNotice.classList.remove('visible');
+                if (!gameEnded) {
+                    gameEnded = true;
+                    playVictory();
+                    showGameOverScreen(true, 'Opponent forfeited (disconnected)');
+                }
+            },
+        };
+    }
+
+    function updateMpPlayersList(players) {
+        if (!mpPlayersList) return;
+        var html = '';
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            var isYou = p.playerId === 'you' || (typeof p.playerId === 'string' && p.playerId.length > 5);
+            var raceName = p.race ? p.race.charAt(0).toUpperCase() + p.race.slice(1) : '?';
+            var readyText = p.ready ? 'Ready' : 'Not ready';
+            var readyClass = p.ready ? 'mp-player-status' : 'mp-player-status not-ready';
+            var dotClass = p.ready ? 'mp-player-dot' : 'mp-player-dot waiting';
+            html += '<div class="mp-player-row">';
+            html += '<div class="' + dotClass + '"></div>';
+            html += '<span class="mp-player-name">' + (p.isHost ? 'Host' : 'Guest') + '</span>';
+            html += '<span class="mp-player-race">(' + raceName + ')</span>';
+            html += '<span class="' + readyClass + '">' + readyText + '</span>';
+            html += '</div>';
+        }
+        // Show waiting slot if only one player
+        if (players.length < 2) {
+            html += '<div class="mp-player-row">';
+            html += '<div class="mp-player-dot waiting"></div>';
+            html += '<span class="mp-player-name" style="color:var(--muted)">Waiting for player...</span>';
+            html += '</div>';
+        }
+        mpPlayersList.innerHTML = html;
+    }
+
+    function handleMpAction(data) {
+        if (!data) return;
+
+        if (data.type === 'start-game') {
+            // Guest receives start signal from host
+            mpLobby.classList.remove('visible');
+            initAudio();
+            initGrid(data.mapSize || selectedMapSize);
+            selectedDifficulty = data.difficulty || 'normal';
+            var race = mpGetSelectedRace();
+            startMultiplayerGame(race);
+            return;
+        }
+
+        if (data.type === 'build') {
+            // Opponent placed a building — no visual sync needed as we don't render their side
+            return;
+        }
+
+        if (data.type === 'move') {
+            // Opponent moved a unit
+            return;
+        }
+
+        if (data.type === 'combat') {
+            // Opponent engaged in combat
+            if (data.log) addCombatLog('Opponent: ' + data.log);
+            return;
+        }
+
+        if (data.type === 'end-turn') {
+            // Opponent ended their turn — now it's our turn
+            setIsMyTurn(true);
+            updateMpTurnUI();
+            showToast('story', 'Your Turn', 'Your opponent ended their turn.', '');
+            return;
+        }
+
+        if (data.type === 'state-sync') {
+            // Full state sync — not used in basic turn-based mode
+            return;
+        }
+    }
+
+    function startMultiplayerGame(race) {
+        gameState = createGameState(race);
+        gameState.difficulty = selectedDifficulty;
+        gameState.mapSize = selectedMapSize;
+        storytellerState = createStorytellerState();
+        tutorialState = createTutorialState();
+        gameStartTime = Date.now();
+        gameEnded = false;
+
+        // Place a free Town Center
+        var centerQ = Math.floor(gridSize / 2);
+        var centerR = Math.floor(gridSize / 2);
+
+        // Host spawns top-left, guest spawns bottom-right
+        if (!getIsHost()) {
+            centerQ = gridSize - Math.floor(gridSize / 4);
+            centerR = gridSize - Math.floor(gridSize / 4);
+        } else {
+            centerQ = Math.floor(gridSize / 4);
+            centerR = Math.floor(gridSize / 4);
+        }
+
+        var tcHex = findValidHex(centerQ, centerR, 'town_center');
+        if (tcHex) {
+            placeBuilding('town_center', tcHex.q, tcHex.r);
+            var tcBuilding = gameState.buildings[gameState.buildings.length - 1];
+            tcBuilding.workers = 2;
+        }
+
+        gameState.units = [];
+        initBuildingHP(gameState);
+        recalcPopulationCap(gameState);
+
+        // No AI opponent in multiplayer
+        aiState = null;
+
+        setupInputSystem();
+        updateFogOfWar();
+        showHUD();
+        showMpHUD();
+        startMusic();
+        updateMpTurnUI();
+
+        showTutorialSteps(1, 'start');
+    }
+
+    function showMpHUD() {
+        if (!isMultiplayerActive()) return;
+        mpStatusEl.classList.add('visible');
+        mpChatToggle.classList.add('visible');
+        // Hide save/load in multiplayer
+        document.getElementById('save-load-bar').classList.remove('visible');
+    }
+
+    function updateMpTurnUI() {
+        if (!isMultiplayerActive()) return;
+        if (getIsMyTurn()) {
+            mpWaiting.classList.remove('visible');
+            endTurnBtn.classList.add('visible');
+            endTurnBtn.disabled = false;
+        } else {
+            mpWaiting.classList.add('visible');
+            endTurnBtn.disabled = true;
+        }
+    }
+
+    // ── Chat UI ──
+    if (mpChatToggle) {
+        mpChatToggle.addEventListener('click', function () {
+            mpChat.classList.toggle('visible');
+            mpChatToggle.classList.toggle('visible');
+        });
+    }
+    if (mpChatClose) {
+        mpChatClose.addEventListener('click', function () {
+            mpChat.classList.remove('visible');
+            mpChatToggle.classList.add('visible');
+        });
+    }
+    if (mpChatSend) {
+        mpChatSend.addEventListener('click', function () {
+            var text = mpChatInput.value.trim();
+            if (!text) return;
+            sendChat(text);
+            appendChatMessage('you', text);
+            mpChatInput.value = '';
+        });
+    }
+    if (mpChatInput) {
+        mpChatInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                mpChatSend.click();
+            }
+        });
+    }
+    if (mpDisconnectDismiss) {
+        mpDisconnectDismiss.addEventListener('click', function () {
+            mpDisconnectNotice.classList.remove('visible');
+        });
+    }
+
+    function appendChatMessage(from, text) {
+        if (!mpChatMessages) return;
+        var cls = from === 'you' ? 'from-you' : 'from-opp';
+        var label = from === 'you' ? 'You' : 'Opponent';
+        var div = document.createElement('div');
+        div.className = 'mp-chat-msg';
+        div.innerHTML = '<span class="' + cls + '">' + label + ':</span> ' + escapeHtml(text);
+        mpChatMessages.appendChild(div);
+        mpChatMessages.scrollTop = mpChatMessages.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
     }
 
     // ── Race Selection ──
@@ -344,6 +701,7 @@ function init() {
         inputApi = setupInput(camera, hexMeshes, hexData, {
             onSelect: function (key) {
                 if (gameEnded) return;
+                if (isMultiplayerActive() && !getIsMyTurn()) return;
                 playClick();
                 if (key) {
                     var unitHandled = handleUnitClick(key);
@@ -519,6 +877,17 @@ function init() {
             gameEnded = false;
             combatLogEntries = [];
             if (combatLogEl) combatLogEl.classList.remove('visible');
+
+            // Leave multiplayer room if active
+            if (isMultiplayerActive()) {
+                leaveRoom();
+            }
+            // Hide multiplayer HUD
+            if (mpStatusEl) mpStatusEl.classList.remove('visible');
+            if (mpWaiting) mpWaiting.classList.remove('visible');
+            if (mpChatToggle) mpChatToggle.classList.remove('visible');
+            if (mpChat) mpChat.classList.remove('visible');
+            if (mpDisconnectNotice) mpDisconnectNotice.classList.remove('visible');
 
             // Hide HUD
             resourceBarEl.classList.remove('visible');
@@ -913,6 +1282,11 @@ function init() {
         updateResourceBar();
         updatePopBar();
         drawMinimap();
+
+        // Broadcast in multiplayer
+        if (isMultiplayerActive()) {
+            sendAction({ type: 'build', building: buildingType, q: q, r: r });
+        }
     }
 
     // ── Building Upgrade ──
@@ -1755,6 +2129,7 @@ function init() {
     // ── End Turn ──
     endTurnBtn.addEventListener('click', function () {
         if (!gameState || gameEnded) return;
+        if (isMultiplayerActive() && !getIsMyTurn()) return;
 
         // Store resources before turn for change indicators
         prevResources = {};
@@ -1904,6 +2279,12 @@ function init() {
 
         // Check for victory/defeat
         checkGameEnd();
+
+        // Multiplayer: broadcast end-turn and update UI
+        if (isMultiplayerActive()) {
+            sendAction({ type: 'end-turn', turn: gameState.turn });
+            updateMpTurnUI();
+        }
     });
 
     // Handle resize
