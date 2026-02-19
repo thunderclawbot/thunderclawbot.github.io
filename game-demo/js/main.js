@@ -1,7 +1,8 @@
 // main.js — Entry point for the hex grid game demo
 
 import * as THREE from 'three';
-import { createHexGrid, axialToWorld, TERRAIN, HEX_SIZE } from './hex-grid.js';
+import { createHexGrid, axialToWorld, TERRAIN, TERRAIN_COLORS_HEX, RESOURCE_COLORS, HEX_SIZE } from './hex-grid.js';
+import { generateMap, seedToString, stringToSeed, MAP_SIZES } from './map-gen.js';
 import { setupCamera } from './camera.js';
 import { setupInput } from './input.js';
 import { createGameState, addBuilding, getAvailableWorkers, getAssignedWorkers, startHexImprovement, saveGame, loadGame, hasSavedGame, deleteSavedGame } from './game-state.js';
@@ -46,7 +47,9 @@ function init() {
 
     // Start screen settings
     var selectedDifficulty = 'normal';
-    var selectedMapSize = 20;
+    var selectedMapSize = 25;
+    var currentMapSeed = null;
+    var currentMapData = null;
 
     // Grid & Camera — initialized after start screen
     var gridSize = 20;
@@ -184,8 +187,98 @@ function init() {
             });
             this.classList.add('active');
             selectedMapSize = parseInt(this.getAttribute('data-mapsize'));
+            refreshMapPreview();
         });
     });
+
+    // ── Seed input & Map Preview ──
+    var seedInput = document.getElementById('seed-input');
+    var seedRandomBtn = document.getElementById('seed-random-btn');
+    var mapPreviewCanvas = document.getElementById('map-preview-canvas');
+    var mapPreviewSeedEl = document.getElementById('map-preview-seed');
+
+    function getSelectedSeed() {
+        if (seedInput && seedInput.value.trim()) {
+            var parsed = stringToSeed(seedInput.value.trim());
+            if (parsed !== null) return parsed;
+        }
+        return null;
+    }
+
+    function refreshMapPreview() {
+        var seed = getSelectedSeed();
+        currentMapData = generateMap(selectedMapSize, seed);
+        currentMapSeed = currentMapData.seed;
+        if (seedInput && !seedInput.value.trim()) {
+            // Don't overwrite user input, just show seed below
+        }
+        if (mapPreviewSeedEl) {
+            mapPreviewSeedEl.textContent = 'Seed: ' + seedToString(currentMapSeed);
+        }
+        drawMapPreview();
+    }
+
+    function drawMapPreview() {
+        if (!mapPreviewCanvas || !currentMapData) return;
+        var ctx = mapPreviewCanvas.getContext('2d');
+        var w = mapPreviewCanvas.width;
+        var h = mapPreviewCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 0, w, h);
+
+        var gs = currentMapData.gridSize;
+        var cellW = w / gs;
+        var cellH = h / gs;
+
+        currentMapData.hexes.forEach(function (hex) {
+            var x = hex.q * cellW;
+            var y = hex.r * cellH;
+
+            if (hex.river) {
+                ctx.fillStyle = '#4a90d9';
+            } else {
+                ctx.fillStyle = TERRAIN_COLORS_HEX[hex.terrain] || '#333';
+            }
+            ctx.fillRect(x, y, cellW + 0.5, cellH + 0.5);
+
+            // Resource indicator
+            if (hex.resource && RESOURCE_COLORS[hex.resource]) {
+                ctx.fillStyle = RESOURCE_COLORS[hex.resource];
+                var pad = cellW * 0.25;
+                ctx.fillRect(x + pad, y + pad, cellW - pad * 2, cellH - pad * 2);
+            }
+        });
+
+        // Draw spawn points
+        var ps = currentMapData.playerSpawn;
+        var as = currentMapData.aiSpawn;
+        ctx.fillStyle = '#60a5fa';
+        ctx.beginPath();
+        ctx.arc(ps.q * cellW + cellW / 2, ps.r * cellH + cellH / 2, cellW * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(as.q * cellW + cellW / 2, as.r * cellH + cellH / 2, cellW * 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (seedInput) {
+        seedInput.addEventListener('input', function () {
+            refreshMapPreview();
+        });
+    }
+
+    if (seedRandomBtn) {
+        seedRandomBtn.addEventListener('click', function () {
+            if (seedInput) seedInput.value = '';
+            currentMapSeed = null;
+            refreshMapPreview();
+        });
+    }
+
+    // Generate initial preview
+    refreshMapPreview();
 
     // ── Sound Controls ──
     if (sfxToggle) {
@@ -537,7 +630,8 @@ function init() {
             initAudio();
             playClick();
             var race = this.getAttribute('data-race');
-            initGrid(selectedMapSize);
+            // Use the pre-generated map from the preview
+            initGrid(selectedMapSize, currentMapData);
             startGame(race);
         });
     });
@@ -551,14 +645,18 @@ function init() {
                 initAudio();
                 var saved = loadGame();
                 if (saved) {
-                    initGrid(saved.mapSize || 20);
+                    // Regenerate map from saved seed for consistent terrain
+                    if (saved.mapSeed !== undefined) {
+                        currentMapSeed = saved.mapSeed;
+                    }
+                    initGrid(saved.mapSize || 25);
                     restoreGame(saved);
                 }
             });
         }
     }
 
-    function initGrid(size) {
+    function initGrid(size, mapData) {
         gridSize = size;
 
         // Clear existing grid if any
@@ -566,7 +664,14 @@ function init() {
             scene.remove(gridGroup);
         }
 
-        var result = createHexGrid(scene, gridSize);
+        // Generate map if not provided
+        if (!mapData) {
+            mapData = generateMap(gridSize, currentMapSeed);
+            currentMapData = mapData;
+            currentMapSeed = mapData.seed;
+        }
+
+        var result = createHexGrid(scene, gridSize, mapData);
         hexData = result.hexData;
         hexMeshes = result.hexMeshes;
         gridGroup = result.gridGroup;
@@ -585,15 +690,16 @@ function init() {
         gameState = createGameState(race);
         gameState.difficulty = selectedDifficulty;
         gameState.mapSize = selectedMapSize;
+        gameState.mapSeed = currentMapSeed;
         storytellerState = createStorytellerState();
         tutorialState = createTutorialState();
         gameStartTime = Date.now();
         gameEnded = false;
 
-        // Place a free Town Center on a valid hex near the center
-        var centerQ = Math.floor(gridSize / 2);
-        var centerR = Math.floor(gridSize / 2);
-        var tcHex = findValidHex(centerQ, centerR, 'town_center');
+        // Place Town Center at the balanced player spawn point
+        var spawnQ = currentMapData ? currentMapData.playerSpawn.q : Math.floor(gridSize / 2);
+        var spawnR = currentMapData ? currentMapData.playerSpawn.r : Math.floor(gridSize / 2);
+        var tcHex = findValidHex(spawnQ, spawnR, 'town_center');
         if (tcHex) {
             placeBuilding('town_center', tcHex.q, tcHex.r);
             // Auto-assign 2 workers to Town Center
@@ -605,8 +711,9 @@ function init() {
         initBuildingHP(gameState);
         recalcPopulationCap(gameState);
 
-        // Initialize AI opponent
-        aiState = createAIState(race, selectedDifficulty, gridSize, hexData);
+        // Initialize AI opponent with balanced spawn
+        var aiSpawn = currentMapData ? currentMapData.aiSpawn : null;
+        aiState = createAIState(race, selectedDifficulty, gridSize, hexData, aiSpawn);
 
         // Setup input
         setupInputSystem();
@@ -1987,18 +2094,14 @@ function init() {
         var cellW = w / gridSize;
         var cellH = h / gridSize;
 
-        var terrainColors = {
-            plains: '#4ade80',
-            forest: '#166534',
-            mountain: '#6b7280',
-            water: '#3b82f6',
-            desert: '#d4a574',
-        };
-
         hexData.forEach(function (hex, key) {
             var x = hex.q * cellW;
             var y = hex.r * cellH;
-            ctx.fillStyle = terrainColors[hex.terrain] || '#333';
+            if (hex.river) {
+                ctx.fillStyle = '#4a90d9';
+            } else {
+                ctx.fillStyle = TERRAIN_COLORS_HEX[hex.terrain] || '#333';
+            }
             ctx.fillRect(x, y, cellW, cellH);
 
             if (hex.building) {

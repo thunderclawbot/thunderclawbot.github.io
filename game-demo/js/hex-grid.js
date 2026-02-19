@@ -5,13 +5,33 @@
 import * as THREE from 'three';
 import { createTerrainProps } from './asset-loader.js';
 
-// Terrain definitions
+// Terrain definitions — expanded with swamp biome + river variant
 const TERRAIN = {
     plains:   { color: 0x4ade80, name: 'Plains' },
     forest:   { color: 0x166534, name: 'Forest' },
     mountain: { color: 0x6b7280, name: 'Mountain' },
     water:    { color: 0x3b82f6, name: 'Water' },
     desert:   { color: 0xd4a574, name: 'Desert' },
+    swamp:    { color: 0x5b7a3a, name: 'Swamp' },
+};
+
+// Colors for minimap (hex string versions)
+const TERRAIN_COLORS_HEX = {
+    plains:   '#4ade80',
+    forest:   '#166534',
+    mountain: '#6b7280',
+    water:    '#3b82f6',
+    desert:   '#d4a574',
+    swamp:    '#5b7a3a',
+};
+
+// Resource hex colors for minimap
+const RESOURCE_COLORS = {
+    iron:         '#94a3b8',
+    crystal:      '#a78bfa',
+    fertile_soil: '#4ade80',
+    gold_vein:    '#fbbf24',
+    mana_spring:  '#818cf8',
 };
 
 const TERRAIN_KEYS = Object.keys(TERRAIN);
@@ -20,52 +40,6 @@ const TERRAIN_KEYS = Object.keys(TERRAIN);
 const HEX_SIZE = 1;
 const HEX_HEIGHT = 0.3;
 const HEX_GAP = 0.05;
-
-// Seeded random number generator (mulberry32)
-function mulberry32(seed) {
-    return function () {
-        seed |= 0;
-        seed = (seed + 0x6d2b79f5) | 0;
-        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-// Simple value noise for terrain generation
-function createNoiseFunc(seed) {
-    const rng = mulberry32(seed);
-    const SIZE = 256;
-    const table = new Float32Array(SIZE);
-    for (let i = 0; i < SIZE; i++) {
-        table[i] = rng();
-    }
-
-    return function noise2d(x, y) {
-        const scale = 0.15;
-        const sx = x * scale;
-        const sy = y * scale;
-
-        const ix = Math.floor(sx);
-        const iy = Math.floor(sy);
-        const fx = sx - ix;
-        const fy = sy - iy;
-
-        const hash = (a, b) => table[((a * 73856093 ^ b * 19349663) & 0x7fffffff) % SIZE];
-
-        const n00 = hash(ix, iy);
-        const n10 = hash(ix + 1, iy);
-        const n01 = hash(ix, iy + 1);
-        const n11 = hash(ix + 1, iy + 1);
-
-        const tx = fx * fx * (3 - 2 * fx);
-        const ty = fy * fy * (3 - 2 * fy);
-
-        const a = n00 + (n10 - n00) * tx;
-        const b = n01 + (n11 - n01) * tx;
-        return a + (b - a) * ty;
-    };
-}
 
 // Convert axial (q, r) to world position (flat-top hex)
 export function axialToWorld(q, r) {
@@ -104,71 +78,59 @@ function createHexShape(size) {
     return shape;
 }
 
-// Determine terrain from noise value
-function terrainFromNoise(value) {
-    if (value < 0.2) return 'water';
-    if (value < 0.4) return 'plains';
-    if (value < 0.6) return 'forest';
-    if (value < 0.8) return 'desert';
-    return 'mountain';
-}
+// Create hex grid from pre-generated map data (from map-gen.js)
+// mapData.hexes is a Map of "q,r" -> hex objects with terrain, resource, river, etc.
+export function createHexGrid(scene, gridSize, mapData) {
+    var hexShape = createHexShape(HEX_SIZE - HEX_GAP);
 
-// Create hex grid
-export function createHexGrid(scene, gridSize = 20, seed = 42) {
-    const noise = createNoiseFunc(seed);
-    const hexShape = createHexShape(HEX_SIZE - HEX_GAP);
-
-    const extrudeSettings = {
+    var extrudeSettings = {
         depth: HEX_HEIGHT,
         bevelEnabled: false,
     };
 
-    // Create shared geometries per terrain type
-    const sharedGeometry = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
-    // Rotate so hex lies flat on XZ plane (extrude was along Z, we want Y-up)
+    // Create shared geometry
+    var sharedGeometry = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
     sharedGeometry.rotateX(-Math.PI / 2);
 
-    const hexData = new Map(); // key: "q,r" -> hex data
-    const hexMeshes = new Map(); // key: "q,r" -> mesh
+    var hexData = mapData ? mapData.hexes : new Map();
+    var hexMeshes = new Map();
 
-    const materials = {};
-    for (const [key, terrain] of Object.entries(TERRAIN)) {
-        materials[key] = new THREE.MeshStandardMaterial({
-            color: terrain.color,
+    var materials = {};
+    for (var tKey in TERRAIN) {
+        materials[tKey] = new THREE.MeshStandardMaterial({
+            color: TERRAIN[tKey].color,
             roughness: 0.8,
             metalness: 0.1,
             flatShading: true,
         });
     }
 
-    const gridGroup = new THREE.Group();
+    // River material — slightly blue-tinted version of terrain
+    var riverMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4a90d9,
+        roughness: 0.6,
+        metalness: 0.15,
+        flatShading: true,
+    });
 
-    for (let q = 0; q < gridSize; q++) {
-        for (let r = 0; r < gridSize; r++) {
-            const noiseVal = noise(q, r);
-            const terrain = terrainFromNoise(noiseVal);
+    var gridGroup = new THREE.Group();
 
-            const hex = {
-                q,
-                r,
-                terrain,
-                building: null,
-                unit: null,
-                explored: false,
-            };
+    hexData.forEach(function (hex, key) {
+        var mat = hex.river ? riverMaterial : (materials[hex.terrain] || materials.plains);
+        var mesh = new THREE.Mesh(sharedGeometry, mat);
+        var pos = axialToWorld(hex.q, hex.r);
 
-            const key = `${q},${r}`;
-            hexData.set(key, hex);
+        // Slight Y offset for elevation feel (water lower, mountains higher)
+        var yOffset = 0;
+        if (hex.terrain === 'water') yOffset = -0.08;
+        else if (hex.terrain === 'mountain') yOffset = 0.15;
 
-            const mesh = new THREE.Mesh(sharedGeometry, materials[terrain]);
-            const pos = axialToWorld(q, r);
-            mesh.position.set(pos.x, 0, pos.z);
-            mesh.userData = { q, r, key };
+        mesh.position.set(pos.x, yOffset, pos.z);
+        mesh.userData = { q: hex.q, r: hex.r, key: key };
 
-            hexMeshes.set(key, mesh);
-            gridGroup.add(mesh);
-        }
-    }
+        hexMeshes.set(key, mesh);
+        gridGroup.add(mesh);
+    });
 
     // Add terrain props (trees, rocks, grass) to hexes
     var propGroup = new THREE.Group();
@@ -192,4 +154,4 @@ export function createHexGrid(scene, gridSize = 20, seed = 42) {
     return { hexData, hexMeshes, gridGroup, materials, propGroup };
 }
 
-export { TERRAIN, HEX_SIZE };
+export { TERRAIN, TERRAIN_COLORS_HEX, RESOURCE_COLORS, HEX_SIZE };

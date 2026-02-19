@@ -71,8 +71,15 @@ export function setupInput(camera, hexMeshes, hexData, callbacks) {
         if (!data) return;
 
         const terrain = TERRAIN[data.terrain];
+        let terrainLabel = terrain ? terrain.name : data.terrain;
+        if (data.river) terrainLabel += ' (River)';
         let html = '<div class="hex-coord">Hex (' + data.q + ', ' + data.r + ')</div>' +
-            '<div class="hex-terrain">' + terrain.name + '</div>';
+            '<div class="hex-terrain">' + terrainLabel + '</div>';
+
+        if (data.resource) {
+            const resLabels = { iron: 'Iron', crystal: 'Crystal', fertile_soil: 'Fertile Soil', gold_vein: 'Gold Vein', mana_spring: 'Mana Spring' };
+            html += '<div class="hex-building" style="color:#a78bfa">Resource: ' + (resLabels[data.resource] || data.resource) + '</div>';
+        }
 
         if (data.building) {
             const def = BUILDING_TYPES[data.building.type];

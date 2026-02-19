@@ -38,7 +38,7 @@ var BUILD_PRIORITY = [
 
 // ── Create AI state ──
 // Returns a game-state-like object for the AI settlement
-export function createAIState(playerRace, difficulty, gridSize, hexData) {
+export function createAIState(playerRace, difficulty, gridSize, hexData, aiSpawn) {
     // Pick a different race from the player
     var aiRace;
     var candidates = RACES.filter(function (r) { return r !== playerRace; });
@@ -63,9 +63,9 @@ export function createAIState(playerRace, difficulty, gridSize, hexData) {
         aiState.resources[res] = Math.floor(starting[res] * mul);
     }
 
-    // Place AI Town Center on the opposite side of the map
-    var spawnQ = gridSize - Math.floor(gridSize / 4);
-    var spawnR = gridSize - Math.floor(gridSize / 4);
+    // Place AI Town Center — use balanced spawn point if provided
+    var spawnQ = aiSpawn ? aiSpawn.q : gridSize - Math.floor(gridSize / 4);
+    var spawnR = aiSpawn ? aiSpawn.r : gridSize - Math.floor(gridSize / 4);
     var tcHex = findValidHexForAI(spawnQ, spawnR, 'town_center', hexData, aiState);
     if (tcHex) {
         placeAIBuilding(aiState, 'town_center', tcHex.q, tcHex.r, hexData);

@@ -33,6 +33,7 @@ export const TERRAIN_BONUSES = {
     mountain: { food: 0, wood: 0, stone: 1, gold: 0, mana: 0 },
     desert:   { food: 0, wood: 0, stone: 0, gold: 1, mana: 0 },
     water:    { food: 0, wood: 0, stone: 0, gold: 0, mana: 0 },
+    swamp:    { food: 0, wood: 0, stone: 0, gold: 0, mana: 1 },
 };
 
 // Calculate gathered resources for a building given race bonuses

@@ -1216,6 +1216,53 @@
             font-weight: 600;
         }
 
+        /* ── Seed Input ── */
+        #seed-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8rem;
+            font-family: monospace;
+            color: var(--text);
+            width: 90px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        #seed-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        #seed-input::placeholder {
+            color: var(--muted);
+            text-transform: none;
+            letter-spacing: normal;
+        }
+
+        /* ── Map Preview ── */
+        #map-preview-container {
+            margin-top: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        #map-preview-canvas {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            image-rendering: pixelated;
+        }
+
+        #map-preview-seed {
+            font-size: 0.7rem;
+            color: var(--muted);
+            font-family: monospace;
+            letter-spacing: 0.05em;
+        }
+
         /* ── Game Over Screen ── */
         #game-over-screen {
             position: fixed;
@@ -2122,11 +2169,22 @@
             <div class="start-option-group">
                 <div class="start-option-label">Map Size</div>
                 <div class="start-option-btns" id="mapsize-btns">
-                    <button class="start-option-btn" data-mapsize="12">Small</button>
-                    <button class="start-option-btn active" data-mapsize="20">Medium</button>
-                    <button class="start-option-btn" data-mapsize="30">Large</button>
+                    <button class="start-option-btn" data-mapsize="15">Small</button>
+                    <button class="start-option-btn active" data-mapsize="25">Medium</button>
+                    <button class="start-option-btn" data-mapsize="35">Large</button>
                 </div>
             </div>
+            <div class="start-option-group">
+                <div class="start-option-label">Seed</div>
+                <div class="start-option-btns" id="seed-group">
+                    <input type="text" id="seed-input" maxlength="8" placeholder="Random" spellcheck="false">
+                    <button class="start-option-btn" id="seed-random-btn">Dice</button>
+                </div>
+            </div>
+        </div>
+        <div id="map-preview-container">
+            <canvas id="map-preview-canvas" width="180" height="180"></canvas>
+            <div id="map-preview-seed"></div>
         </div>
         <button id="continue-btn">Continue Saved Game</button>
         <button id="mp-btn">Multiplayer</button>
