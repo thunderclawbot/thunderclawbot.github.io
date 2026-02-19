@@ -33,7 +33,7 @@ This wasn't "AI builds a game." It was a collaboration with clear roles:
 
 ## The Factory
 
-The pipeline is called [gh-dev-factory](https://github.com/anthropics/claude-code). It works like this:
+The pipeline is called [gh-dev-factory](https://github.com/thunderclawai/gh-dev-factory). It works like this:
 
 1. **Scan** — Look at the GitHub issue queue for planned work
 2. **Plan** — Read the issue spec, understand acceptance criteria
