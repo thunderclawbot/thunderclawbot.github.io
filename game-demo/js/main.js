@@ -56,6 +56,7 @@ function init() {
     var hexData = null;
     var hexMeshes = null;
     var gridGroup = null;
+    var gridApi = null; // InstancedMesh API from createHexGrid
     var camera = null;
     var controls = null;
     var updateKeys = null;
@@ -70,6 +71,10 @@ function init() {
 
     // Unit meshes tracked by hex key
     var unitMeshes = new Map();
+
+    // Object pool for unit meshes (reuse on death/creation)
+    var unitMeshPool = [];
+    var UNIT_POOL_MAX = 30;
 
     // Movement range highlight meshes
     var moveHighlights = [];
@@ -679,6 +684,7 @@ function init() {
         hexData = result.hexData;
         hexMeshes = result.hexMeshes;
         gridGroup = result.gridGroup;
+        gridApi = result; // Store full API (instancedMeshes, setHexColor, applyFogBatch, etc.)
 
         // Setup camera
         var camResult = setupCamera(renderer, gridSize);
@@ -842,7 +848,7 @@ function init() {
                     }
                 }
             },
-        });
+        }, gridApi);
     }
 
     function showHUD() {
@@ -1045,16 +1051,60 @@ function init() {
 
     // ── Unit Helpers ──
 
-    function rebuildUnitMeshes() {
-        // Clear existing
-        unitMeshes.forEach(function (mesh) {
-            scene.remove(mesh);
-            if (mesh.userData && mesh.userData.isModelGroup) {
-                disposeModel(mesh);
-            } else {
-                if (mesh.geometry) mesh.geometry.dispose();
-                if (mesh.material) mesh.material.dispose();
+    // Return a unit mesh to the object pool instead of disposing it
+    function poolUnitMesh(mesh) {
+        scene.remove(mesh);
+        if (mesh.userData && mesh.userData.isModelGroup) {
+            // Model groups can't be easily reused, dispose them
+            disposeModel(mesh);
+            return;
+        }
+        if (unitMeshPool.length < UNIT_POOL_MAX) {
+            mesh.visible = false;
+            unitMeshPool.push(mesh);
+        } else {
+            if (mesh.geometry) mesh.geometry.dispose();
+            if (mesh.material) mesh.material.dispose();
+        }
+    }
+
+    // Get a mesh from pool or create new
+    function getUnitMesh(unitType, q, r, race, owner) {
+        var pos = axialToWorld(q, r);
+        // Try to reuse a pooled mesh of the same type
+        for (var p = 0; p < unitMeshPool.length; p++) {
+            var pooled = unitMeshPool[p];
+            if (pooled.userData && pooled.userData.unitType === unitType) {
+                unitMeshPool.splice(p, 1);
+                pooled.position.set(pos.x, pooled.userData.baseY, pos.z);
+                pooled.scale.set(1, 1, 1);
+                pooled.userData.q = q;
+                pooled.userData.r = r;
+                pooled.visible = true;
+                // Reset material after defeat animation (opacity/transparent)
+                if (pooled.material) {
+                    pooled.material.opacity = 1;
+                    pooled.material.transparent = false;
+                }
+                // Reset children (e.g. hero ring with transparent material)
+                for (var c = 0; c < pooled.children.length; c++) {
+                    var child = pooled.children[c];
+                    if (child.material) {
+                        child.material.opacity = child.material._origOpacity !== undefined
+                            ? child.material._origOpacity : 1;
+                        child.material.transparent = child.material.opacity < 1;
+                    }
+                }
+                return pooled;
             }
+        }
+        return createUnitMesh(unitType, q, r, race, owner);
+    }
+
+    function rebuildUnitMeshes() {
+        // Return existing meshes to pool
+        unitMeshes.forEach(function (mesh) {
+            poolUnitMesh(mesh);
         });
         unitMeshes.clear();
 
@@ -1070,7 +1120,7 @@ function init() {
 
             if (unit.owner !== 'player' && !visible.has(key)) continue;
 
-            var mesh = createUnitMesh(unit.type, unit.q, unit.r, gameState.race, unit.owner);
+            var mesh = getUnitMesh(unit.type, unit.q, unit.r, gameState.race, unit.owner);
             if (mesh) {
                 scene.add(mesh);
                 unitMeshes.set(key, mesh);
@@ -1086,7 +1136,7 @@ function init() {
 
                 if (!visible.has(aiKey)) continue;
 
-                var aiMesh = createUnitMesh(aiUnit.type, aiUnit.q, aiUnit.r, aiState.race, 'ai');
+                var aiMesh = getUnitMesh(aiUnit.type, aiUnit.q, aiUnit.r, aiState.race, 'ai');
                 if (aiMesh) {
                     scene.add(aiMesh);
                     unitMeshes.set('ai_' + aiKey, aiMesh);
@@ -1136,7 +1186,7 @@ function init() {
             }
         });
 
-        applyFogOfWar(hexMeshes, hexData, visible, gameState.exploredHexes);
+        applyFogOfWar(hexMeshes, hexData, visible, gameState.exploredHexes, gridApi);
 
         if (inputApi && inputApi.setVisibleHexes) {
             inputApi.setVisibleHexes(visible);
@@ -2594,6 +2644,10 @@ function init() {
     // Handle resize
     function onResize() {
         renderer.setSize(window.innerWidth, window.innerHeight);
+        if (camera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
     }
     window.addEventListener('resize', onResize);
 
@@ -2615,6 +2669,25 @@ function init() {
             });
         }
     }
+
+    // ── FPS Counter (toggle with F key) ──
+    var fpsEl = document.createElement('div');
+    fpsEl.id = 'fps-counter';
+    fpsEl.style.cssText = 'position:fixed;top:8px;right:8px;color:#4ade80;font:bold 14px monospace;' +
+        'background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px;z-index:9999;pointer-events:none;display:none;';
+    document.body.appendChild(fpsEl);
+    var fpsVisible = false;
+    var fpsFrames = 0;
+    var fpsLastTime = performance.now();
+
+    window.addEventListener('keydown', function (e) {
+        if (e.key === 'f' || e.key === 'F') {
+            // Don't toggle if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            fpsVisible = !fpsVisible;
+            fpsEl.style.display = fpsVisible ? 'block' : 'none';
+        }
+    });
 
     // Swipe gesture to dismiss build menu on mobile
     (function () {
@@ -2654,6 +2727,20 @@ function init() {
         if (controls) controls.update();
         if (camera) {
             renderer.render(scene, camera);
+        }
+
+        // FPS counter update
+        if (fpsVisible) {
+            fpsFrames++;
+            var now = performance.now();
+            if (now - fpsLastTime >= 1000) {
+                var fps = Math.round(fpsFrames * 1000 / (now - fpsLastTime));
+                var drawCalls = renderer.info.render.calls;
+                var tris = renderer.info.render.triangles;
+                fpsEl.textContent = fps + ' FPS | ' + drawCalls + ' draws | ' + (tris > 999 ? (tris / 1000).toFixed(1) + 'k' : tris) + ' tris';
+                fpsFrames = 0;
+                fpsLastTime = now;
+            }
         }
     }
 

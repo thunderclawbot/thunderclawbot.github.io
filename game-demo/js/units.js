@@ -554,8 +554,15 @@ export function getVisibleHexes(gameState, hexData) {
     return visible;
 }
 
-// ── Apply fog of war to hex meshes ──
-export function applyFogOfWar(hexMeshes, hexData, visibleHexes, exploredHexes) {
+// ── Apply fog of war ──
+// Supports InstancedMesh grid API (gridApi.applyFogBatch) or legacy per-mesh fallback
+export function applyFogOfWar(hexMeshes, hexData, visibleHexes, exploredHexes, gridApi) {
+    if (gridApi && gridApi.applyFogBatch) {
+        gridApi.applyFogBatch(visibleHexes, exploredHexes);
+        return;
+    }
+
+    // Legacy fallback (individual meshes)
     var exploredSet = new Set(exploredHexes);
 
     hexMeshes.forEach(function (mesh, key) {
@@ -564,11 +571,9 @@ export function applyFogOfWar(hexMeshes, hexData, visibleHexes, exploredHexes) {
         }
 
         if (visibleHexes.has(key)) {
-            // Fully visible
             mesh.material = mesh._originalMaterial;
             mesh.visible = true;
         } else if (exploredSet.has(key)) {
-            // Previously explored — dim
             if (!mesh._fogMaterial) {
                 mesh._fogMaterial = mesh._originalMaterial.clone();
                 mesh._fogMaterial.color = mesh._originalMaterial.color.clone().multiplyScalar(0.35);
@@ -577,7 +582,6 @@ export function applyFogOfWar(hexMeshes, hexData, visibleHexes, exploredHexes) {
             mesh.material = mesh._fogMaterial;
             mesh.visible = true;
         } else {
-            // Unexplored — dark
             if (!mesh._darkMaterial) {
                 mesh._darkMaterial = new THREE.MeshStandardMaterial({
                     color: 0x0a0a12,

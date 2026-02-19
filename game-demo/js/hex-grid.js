@@ -1,6 +1,7 @@
 // hex-grid.js — Hex grid generation and rendering
 // Flat-top hexagons using axial coordinates (q, r)
 // Reference: redblobgames.com/grids/hexagons
+// Uses InstancedMesh for draw-call batching (one draw call per terrain type)
 
 import * as THREE from 'three';
 import { createTerrainProps } from './asset-loader.js';
@@ -78,23 +79,40 @@ function createHexShape(size) {
     return shape;
 }
 
-// Create hex grid from pre-generated map data (from map-gen.js)
-// mapData.hexes is a Map of "q,r" -> hex objects with terrain, resource, river, etc.
+// Fog/highlight color constants
+var FOG_DIM_FACTOR = 0.35;
+var FOG_DARK_COLOR = new THREE.Color(0x0a0a12);
+var HOVER_TINT = new THREE.Color(0x333333);
+var SELECT_TINT = new THREE.Color(0xfbbf24);
+
+// Create hex grid using InstancedMesh for draw-call batching
+// One InstancedMesh per material bucket (terrain type + river)
+// Returns an API object for raycasting, color updates, and fog
 export function createHexGrid(scene, gridSize, mapData) {
     var hexShape = createHexShape(HEX_SIZE - HEX_GAP);
-
-    var extrudeSettings = {
-        depth: HEX_HEIGHT,
-        bevelEnabled: false,
-    };
-
-    // Create shared geometry
+    var extrudeSettings = { depth: HEX_HEIGHT, bevelEnabled: false };
     var sharedGeometry = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
     sharedGeometry.rotateX(-Math.PI / 2);
 
     var hexData = mapData ? mapData.hexes : new Map();
-    var hexMeshes = new Map();
 
+    // ── Group hexes by material bucket ──
+    // Each bucket gets one InstancedMesh
+    var buckets = {}; // materialKey -> [{ hex, key, pos, yOffset }]
+
+    hexData.forEach(function (hex, key) {
+        var matKey = hex.river ? 'river' : hex.terrain;
+        if (!buckets[matKey]) buckets[matKey] = [];
+
+        var pos = axialToWorld(hex.q, hex.r);
+        var yOffset = 0;
+        if (hex.terrain === 'water') yOffset = -0.08;
+        else if (hex.terrain === 'mountain') yOffset = 0.15;
+
+        buckets[matKey].push({ hex: hex, key: key, pos: pos, yOffset: yOffset });
+    });
+
+    // ── Create materials ──
     var materials = {};
     for (var tKey in TERRAIN) {
         materials[tKey] = new THREE.MeshStandardMaterial({
@@ -104,9 +122,7 @@ export function createHexGrid(scene, gridSize, mapData) {
             flatShading: true,
         });
     }
-
-    // River material — slightly blue-tinted version of terrain
-    var riverMaterial = new THREE.MeshStandardMaterial({
+    materials.river = new THREE.MeshStandardMaterial({
         color: 0x4a90d9,
         roughness: 0.6,
         metalness: 0.15,
@@ -115,24 +131,68 @@ export function createHexGrid(scene, gridSize, mapData) {
 
     var gridGroup = new THREE.Group();
 
+    // ── Mapping structures ──
+    // hexKey -> { instancedMesh, instanceId, baseColor }
+    var hexLookup = new Map();
+    // For raycasting: array of all InstancedMeshes
+    var instancedMeshes = [];
+    // Per InstancedMesh: instanceId -> hexKey
+    var instanceToKey = new Map(); // InstancedMesh.uuid -> array of hexKeys
+
+    // Dummy matrix for setting instance transforms
+    var matrix = new THREE.Matrix4();
+    var baseColor = new THREE.Color();
+
+    for (var matKey in buckets) {
+        var bucket = buckets[matKey];
+        var count = bucket.length;
+        var mat = materials[matKey] || materials.plains;
+
+        var instancedMesh = new THREE.InstancedMesh(sharedGeometry, mat, count);
+        instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        // Enable per-instance colors
+        instancedMesh.instanceColor = new THREE.InstancedBufferAttribute(
+            new Float32Array(count * 3), 3
+        );
+        instancedMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+
+        var keyArray = new Array(count);
+
+        for (var i = 0; i < count; i++) {
+            var entry = bucket[i];
+            matrix.makeTranslation(entry.pos.x, entry.yOffset, entry.pos.z);
+            instancedMesh.setMatrixAt(i, matrix);
+
+            // Set base color from material
+            baseColor.set(mat.color);
+            instancedMesh.setColorAt(i, baseColor);
+
+            keyArray[i] = entry.key;
+
+            hexLookup.set(entry.key, {
+                instancedMesh: instancedMesh,
+                instanceId: i,
+                baseColor: baseColor.clone(),
+            });
+        }
+
+        instanceToKey.set(instancedMesh.uuid, keyArray);
+        instancedMesh.userData.keyArray = keyArray;
+        instancedMesh.frustumCulled = true;
+
+        instancedMeshes.push(instancedMesh);
+        gridGroup.add(instancedMesh);
+    }
+
+    // ── Backward-compatible hexMeshes map ──
+    // input.js expects hexMeshes.get(key) to return objects with .userData.key
+    // We create lightweight proxy objects that hold the key for compatibility
+    var hexMeshes = new Map();
     hexData.forEach(function (hex, key) {
-        var mat = hex.river ? riverMaterial : (materials[hex.terrain] || materials.plains);
-        var mesh = new THREE.Mesh(sharedGeometry, mat);
-        var pos = axialToWorld(hex.q, hex.r);
-
-        // Slight Y offset for elevation feel (water lower, mountains higher)
-        var yOffset = 0;
-        if (hex.terrain === 'water') yOffset = -0.08;
-        else if (hex.terrain === 'mountain') yOffset = 0.15;
-
-        mesh.position.set(pos.x, yOffset, pos.z);
-        mesh.userData = { q: hex.q, r: hex.r, key: key };
-
-        hexMeshes.set(key, mesh);
-        gridGroup.add(mesh);
+        hexMeshes.set(key, { userData: { q: hex.q, r: hex.r, key: key } });
     });
 
-    // Add terrain props (trees, rocks, grass) to hexes
+    // ── Terrain props (trees, rocks, grass) ──
     var propGroup = new THREE.Group();
     hexData.forEach(function (hex, key) {
         var propSeed = hex.q * 73856093 + hex.r * 19349663;
@@ -151,7 +211,100 @@ export function createHexGrid(scene, gridSize, mapData) {
 
     scene.add(gridGroup);
 
-    return { hexData, hexMeshes, gridGroup, materials, propGroup };
+    // ── API for color updates (hover, selection, fog) ──
+    var _colorTmp = new THREE.Color();
+
+    function setHexColor(key, color) {
+        var info = hexLookup.get(key);
+        if (!info) return;
+        _colorTmp.set(color);
+        info.instancedMesh.setColorAt(info.instanceId, _colorTmp);
+        info.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    function resetHexColor(key) {
+        var info = hexLookup.get(key);
+        if (!info) return;
+        info.instancedMesh.setColorAt(info.instanceId, info.baseColor);
+        info.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    function setHexEmissiveTint(key, tintColor, intensity) {
+        var info = hexLookup.get(key);
+        if (!info) return;
+        _colorTmp.copy(info.baseColor);
+        // Add the tint color scaled by intensity (simulates emissive glow)
+        _colorTmp.r += tintColor.r * intensity;
+        _colorTmp.g += tintColor.g * intensity;
+        _colorTmp.b += tintColor.b * intensity;
+        info.instancedMesh.setColorAt(info.instanceId, _colorTmp);
+        info.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    function applyFogToHex(key, state) {
+        // state: 'visible', 'explored', 'hidden'
+        var info = hexLookup.get(key);
+        if (!info) return;
+        if (state === 'visible') {
+            info.instancedMesh.setColorAt(info.instanceId, info.baseColor);
+        } else if (state === 'explored') {
+            _colorTmp.copy(info.baseColor).multiplyScalar(FOG_DIM_FACTOR);
+            info.instancedMesh.setColorAt(info.instanceId, _colorTmp);
+        } else {
+            info.instancedMesh.setColorAt(info.instanceId, FOG_DARK_COLOR);
+        }
+        info.instancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    // Batch fog update — updates all hexes in one pass, then flags needsUpdate once per mesh
+    function applyFogBatch(visibleHexes, exploredHexes) {
+        var exploredSet = new Set(exploredHexes);
+        var dirtyMeshes = new Set();
+
+        hexData.forEach(function (hex, key) {
+            var info = hexLookup.get(key);
+            if (!info) return;
+            if (visibleHexes.has(key)) {
+                info.instancedMesh.setColorAt(info.instanceId, info.baseColor);
+            } else if (exploredSet.has(key)) {
+                _colorTmp.copy(info.baseColor).multiplyScalar(FOG_DIM_FACTOR);
+                info.instancedMesh.setColorAt(info.instanceId, _colorTmp);
+            } else {
+                info.instancedMesh.setColorAt(info.instanceId, FOG_DARK_COLOR);
+            }
+            dirtyMeshes.add(info.instancedMesh);
+        });
+
+        dirtyMeshes.forEach(function (mesh) {
+            mesh.instanceColor.needsUpdate = true;
+        });
+    }
+
+    // Resolve a raycast instanceId to a hex key
+    function resolveInstanceHit(instancedMesh, instanceId) {
+        var keyArray = instancedMesh.userData.keyArray;
+        if (keyArray && instanceId >= 0 && instanceId < keyArray.length) {
+            return keyArray[instanceId];
+        }
+        return null;
+    }
+
+    return {
+        hexData: hexData,
+        hexMeshes: hexMeshes,
+        gridGroup: gridGroup,
+        materials: materials,
+        propGroup: propGroup,
+        // InstancedMesh API
+        instancedMeshes: instancedMeshes,
+        hexLookup: hexLookup,
+        setHexColor: setHexColor,
+        resetHexColor: resetHexColor,
+        setHexEmissiveTint: setHexEmissiveTint,
+        applyFogToHex: applyFogToHex,
+        applyFogBatch: applyFogBatch,
+        resolveInstanceHit: resolveInstanceHit,
+    };
 }
 
-export { TERRAIN, TERRAIN_COLORS_HEX, RESOURCE_COLORS, HEX_SIZE };
+export { TERRAIN, TERRAIN_COLORS_HEX, RESOURCE_COLORS, HEX_SIZE, HEX_HEIGHT };
