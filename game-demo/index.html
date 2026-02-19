@@ -2,9 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Thunderclaw ⚡ — Hex Grid Demo</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Mythical Realms">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <style>
         :root {
             --bg: #0a0a0f;
@@ -1961,6 +1967,8 @@
             #end-turn-btn {
                 padding: 1rem 2rem;
                 font-size: 1.1rem;
+                min-width: 64px;
+                min-height: 56px;
             }
 
             .build-option {
@@ -1969,57 +1977,459 @@
             }
 
             .worker-btn {
-                width: 36px;
-                height: 36px;
+                width: 44px;
+                height: 44px;
                 font-size: 1rem;
             }
 
             .hud-controls {
                 display: none;
             }
+
+            .tech-research-btn {
+                min-height: 44px;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.85rem;
+            }
+
+            .train-btn {
+                min-height: 44px;
+                padding: 0.5rem 0.8rem;
+            }
+
+            .upgrade-btn {
+                min-height: 44px;
+            }
+
+            #event-toast-dismiss {
+                min-height: 44px;
+                padding: 0.5rem 1.5rem;
+                font-size: 0.9rem;
+            }
+
+            #save-load-bar button {
+                min-height: 44px;
+                padding: 0.5rem 1rem;
+            }
+
+            #tech-tree-btn {
+                min-height: 44px;
+                padding: 0.5rem 1rem;
+            }
+
+            #event-log-btn {
+                min-height: 44px;
+                padding: 0.5rem 1rem;
+            }
+
+            .sound-btn {
+                min-width: 44px;
+                min-height: 44px;
+            }
+
+            .start-option-btn {
+                min-height: 44px;
+                padding: 0.5rem 1rem;
+            }
+
+            .race-card {
+                min-height: 44px;
+            }
+
+            #tech-tree-close, #event-log-close {
+                min-height: 44px;
+                padding: 0.5rem 1rem;
+            }
         }
 
-        @media (max-width: 600px) {
-            .race-options {
-                flex-direction: column;
-                gap: 1rem;
+        /* ── Mobile-first panel behavior ── */
+
+        /* Bottom sheet pattern for build menu on mobile */
+        @media (max-width: 768px) {
+            /* Font scaling */
+            html {
+                font-size: clamp(13px, 3.5vw, 16px);
             }
 
-            .start-options {
-                flex-direction: column;
-                gap: 0.8rem;
+            /* Collapsible quest panel */
+            #quest-panel {
+                position: fixed;
+                top: auto;
+                bottom: 5rem;
+                left: 0.5rem;
+                right: auto;
+                max-width: 200px;
+                max-height: 30vh;
+                overflow-y: auto;
+                font-size: 0.72rem;
             }
 
-            #resource-bar {
-                font-size: 0.75rem;
-                gap: 0.5rem;
-                padding: 0.4rem 0.8rem;
+            #quest-panel .quest-panel-title {
+                cursor: pointer;
+                user-select: none;
             }
 
-            #minimap {
+            #quest-panel.collapsed #quest-panel-content {
                 display: none;
+            }
+
+            /* Build menu as bottom sheet */
+            #build-menu {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                max-width: 100%;
+                min-width: unset;
+                width: 100%;
+                max-height: 50vh;
+                border-radius: 16px 16px 0 0;
+                padding: 0.6rem 1rem 1rem;
+                z-index: 30;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            #build-menu.visible {
+                display: block;
+                animation: slideUp 0.25s ease-out;
+            }
+
+            /* Build menu drag handle */
+            #build-menu::before {
+                content: '';
+                display: block;
+                width: 40px;
+                height: 4px;
+                background: var(--border);
+                border-radius: 2px;
+                margin: 0 auto 0.5rem;
+            }
+
+            /* Hex info as compact bottom bar */
+            #hex-info {
+                position: fixed;
+                top: auto;
+                bottom: 4rem;
+                left: 0.5rem;
+                right: 0.5rem;
+                border-radius: 8px;
+                font-size: 0.78rem;
+                padding: 0.5rem 0.8rem;
+                max-width: unset;
+                text-align: center;
+            }
+
+            /* Compact resource bar */
+            #resource-bar {
+                font-size: 0.72rem;
+                gap: 0.4rem;
+                padding: 0.3rem 0.6rem;
+                left: 50%;
+                right: auto;
+                max-width: calc(100vw - 7rem);
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            #resource-bar .resource-icon {
+                width: 16px;
+                height: 16px;
+                font-size: 0.6rem;
+            }
+
+            #resource-bar .resource-amount {
+                min-width: 18px;
+                font-size: 0.72rem;
+            }
+
+            .resource-change {
+                font-size: 0.6rem;
+            }
+
+            /* Pop bar compact */
+            #pop-bar {
+                font-size: 0.72rem;
+                padding: 0.25rem 0.6rem;
+                gap: 0.3rem;
+            }
+
+            /* Research status compact */
+            #research-status {
+                font-size: 0.72rem;
+                padding: 0.25rem 0.6rem;
+                top: 5rem;
+            }
+
+            /* Minimap - smaller, bottom-left */
+            #minimap {
+                display: block;
+                bottom: 4.5rem;
+                left: 0.5rem;
+                padding: 0.25rem;
+            }
+
+            #minimap-canvas {
+                width: 80px;
+                height: 80px;
+            }
+
+            /* Turn counter compact */
+            #turn-counter {
+                right: auto;
+                left: 0.5rem;
+                top: 0.5rem;
+                padding: 0.3rem 0.6rem;
+                font-size: 0.78rem;
+            }
+
+            /* End turn - large touch-friendly, bottom-right */
+            #end-turn-btn {
+                bottom: 0.5rem;
+                right: 0.5rem;
+                padding: 0.8rem 1.2rem;
+                font-size: 1rem;
+                border-radius: 12px;
+                min-width: 80px;
+                min-height: 52px;
+            }
+
+            /* Save/Load - repositioned */
+            #save-load-bar {
+                bottom: 0.5rem;
+                right: auto;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+
+            /* Tech tree button */
+            #tech-tree-btn {
+                bottom: 0.5rem;
+                right: auto;
+                left: 0.5rem;
+                position: fixed;
+            }
+
+            /* Event log button */
+            #event-log-btn {
+                bottom: 3.5rem;
+                left: 0.5rem;
+                right: auto;
+            }
+
+            /* Sound controls */
+            #sound-controls {
+                top: auto;
+                bottom: 3.5rem;
+                left: auto;
+                right: 0.5rem;
+                transform: none;
+            }
+
+            /* Combat log - compact */
+            #combat-log {
+                max-width: 200px;
+                font-size: 0.7rem;
+                top: auto;
+                bottom: 4.5rem;
+                right: 0.5rem;
+                left: auto;
+            }
+
+            /* Tech tree panel mobile */
+            #tech-tree-panel {
+                padding: 0.8rem;
             }
 
             #tech-tree-content {
                 flex-direction: column;
+                gap: 0.8rem;
             }
 
-            #tech-tree-panel {
+            .tech-tree-header {
+                max-width: 100%;
+            }
+
+            /* Event log panel mobile */
+            #event-log-content {
+                max-width: 100%;
+            }
+
+            .event-log-header {
+                max-width: 100%;
+            }
+
+            /* Race select mobile */
+            .race-options {
+                flex-direction: column;
+                gap: 0.8rem;
+                width: 90%;
+            }
+
+            .race-card {
+                min-width: unset;
+                padding: 1rem 1.2rem;
+            }
+
+            .race-icon {
+                font-size: 1.8rem;
+                margin-bottom: 0.3rem;
+            }
+
+            .race-name {
+                font-size: 1rem;
+            }
+
+            .race-select-title {
+                font-size: 1.5rem;
+            }
+
+            .race-select-subtitle {
+                font-size: 0.85rem;
+            }
+
+            .start-options {
+                flex-direction: column;
+                gap: 0.6rem;
+                width: 90%;
+            }
+
+            #race-select {
+                gap: 1.2rem;
                 padding: 1rem;
+                overflow-y: auto;
             }
 
+            /* Game over stats */
             .game-over-stats {
                 grid-template-columns: 1fr;
                 min-width: unset;
                 width: 90%;
             }
 
-            #sound-controls {
-                transform: translateX(-50%);
-                top: auto;
-                bottom: 4rem;
-                left: 50%;
+            /* HUD header */
+            .hud-header {
+                top: 0.5rem;
+                left: auto;
+                right: 0.5rem;
+                font-size: 0.75rem;
             }
+
+            .hud-header .title {
+                font-size: 0.8rem;
+            }
+
+            /* Multiplayer panel */
+            #mp-lobby {
+                width: 90%;
+                max-width: 360px;
+            }
+        }
+
+        /* Extra small screens */
+        @media (max-width: 400px) {
+            #resource-bar {
+                font-size: 0.65rem;
+                gap: 0.25rem;
+                padding: 0.2rem 0.4rem;
+            }
+
+            #resource-bar .resource-icon {
+                width: 14px;
+                height: 14px;
+                font-size: 0.55rem;
+            }
+
+            #minimap-canvas {
+                width: 60px;
+                height: 60px;
+            }
+
+            .race-card {
+                padding: 0.8rem 1rem;
+            }
+        }
+
+        /* Bottom sheet slide-up animation */
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(0); }
+            to { transform: translateY(100%); }
+        }
+
+        /* Long-press tooltip */
+        .touch-tooltip {
+            position: fixed;
+            z-index: 40;
+            background: var(--surface);
+            border: 1px solid var(--accent-dim);
+            border-radius: 8px;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.78rem;
+            color: var(--text);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 200px;
+            text-align: center;
+        }
+
+        .touch-tooltip.visible {
+            opacity: 1;
+        }
+
+        /* PWA install banner */
+        #pwa-install-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 200;
+            background: var(--surface);
+            border-top: 1px solid var(--accent-dim);
+            padding: 0.8rem 1rem;
+            display: none;
+            align-items: center;
+            gap: 0.8rem;
+            justify-content: center;
+        }
+
+        #pwa-install-banner.visible {
+            display: flex;
+        }
+
+        .pwa-install-text {
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+
+        .pwa-install-btn {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            min-height: 44px;
+        }
+
+        .pwa-dismiss-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.85rem;
+            font-family: inherit;
+            color: var(--muted);
+            cursor: pointer;
+            min-height: 44px;
         }
 
         /* ── Animation System ── */
@@ -2365,6 +2775,16 @@
         <button class="mp-lobby-btn secondary" id="mp-disconnect-dismiss">OK</button>
     </div>
 
+    <!-- Touch tooltip (long-press) -->
+    <div class="touch-tooltip" id="touch-tooltip"></div>
+
+    <!-- PWA Install Banner -->
+    <div id="pwa-install-banner">
+        <span class="pwa-install-text">Install Mythical Realms for offline play</span>
+        <button class="pwa-install-btn" id="pwa-install-btn">Install</button>
+        <button class="pwa-dismiss-btn" id="pwa-dismiss-btn">Not now</button>
+    </div>
+
     <!-- Animation System Overlays -->
     <div id="anim-screen-dim"></div>
     <div id="anim-enemy-thinking">
@@ -2389,5 +2809,43 @@
     }
     </script>
     <script type="module" src="js/main.js"></script>
+    <script>
+        // Service worker registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('sw.js').catch(function() {});
+            });
+        }
+
+        // PWA install prompt
+        var deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            var banner = document.getElementById('pwa-install-banner');
+            if (banner) banner.classList.add('visible');
+        });
+
+        var installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) {
+            installBtn.addEventListener('click', function() {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then(function() {
+                        deferredPrompt = null;
+                        document.getElementById('pwa-install-banner').classList.remove('visible');
+                    });
+                }
+            });
+        }
+
+        var dismissBtn = document.getElementById('pwa-dismiss-btn');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', function() {
+                document.getElementById('pwa-install-banner').classList.remove('visible');
+                deferredPrompt = null;
+            });
+        }
+    </script>
 </body>
 </html>

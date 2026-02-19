@@ -42,6 +42,13 @@ export function setupCamera(renderer, gridSize = 20) {
     controls.enablePan = true;
     controls.panSpeed = 1.0;
 
+    // Touch controls — OrbitControls handles pinch-zoom and two-finger pan natively
+    // ONE_FINGER = ROTATE (orbit), TWO_FINGER = DOLLY_PAN (pinch zoom + pan)
+    controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+    };
+
     controls.update();
 
     // Arrow key panning
@@ -80,5 +87,15 @@ export function setupCamera(renderer, gridSize = 20) {
 
     window.addEventListener('resize', onResize);
 
-    return { camera, controls, updateKeys };
+    // Center camera on a world position (for double-tap)
+    function panTo(worldX, worldZ) {
+        var dx = worldX - controls.target.x;
+        var dz = worldZ - controls.target.z;
+        controls.target.x += dx;
+        controls.target.z += dz;
+        camera.position.x += dx;
+        camera.position.z += dz;
+    }
+
+    return { camera, controls, updateKeys, panTo };
 }
