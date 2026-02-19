@@ -25,9 +25,27 @@ var BASE_CONDITIONS = {
 
 // ── Check victory conditions ──
 // Returns { won: bool, reason: string } or null if game continues
-export function checkVictory(gameState, difficulty) {
+// aiState: optional AI opponent state
+export function checkVictory(gameState, difficulty, aiState) {
     var mul = DIFFICULTY_MULTIPLIERS[difficulty] || 1.0;
     var race = gameState.race;
+
+    // Condition 0: Destroy enemy Town Center (primary win condition when AI present)
+    if (aiState) {
+        var aiHasTC = false;
+        for (var ai = 0; ai < aiState.buildings.length; ai++) {
+            var ab = aiState.buildings[ai];
+            if (ab.type === 'town_center') {
+                if (ab.hp !== undefined && ab.hp <= 0) {
+                    return { won: true, reason: 'Destroyed the enemy Town Center!' };
+                }
+                aiHasTC = true;
+            }
+        }
+        if (!aiHasTC) {
+            return { won: true, reason: 'Destroyed the enemy Town Center!' };
+        }
+    }
 
     // Condition 1: Build ultimate building
     var ultimateType = ULTIMATE_BUILDINGS[race];
@@ -82,7 +100,8 @@ export function checkDefeat(gameState) {
 }
 
 // ── Collect game stats for summary screen ──
-export function collectStats(gameState, storytellerState, difficulty, startTime) {
+// aiState: optional AI opponent state for additional stats
+export function collectStats(gameState, storytellerState, difficulty, startTime, aiState) {
     var totalResources = 0;
     for (var res in gameState.resources) {
         totalResources += gameState.resources[res] || 0;
@@ -120,7 +139,7 @@ export function collectStats(gameState, storytellerState, difficulty, startTime)
     var minutes = Math.floor(elapsed / 60);
     var seconds = elapsed % 60;
 
-    return {
+    var stats = {
         race: gameState.race,
         difficulty: difficulty,
         turns: gameState.turn,
@@ -137,4 +156,17 @@ export function collectStats(gameState, storytellerState, difficulty, startTime)
         resources: { ...gameState.resources },
         playTime: minutes + 'm ' + (seconds < 10 ? '0' : '') + seconds + 's',
     };
+
+    // AI opponent stats
+    if (aiState) {
+        stats.enemyRace = aiState.race;
+        var aiBuildings = 0;
+        for (var ab = 0; ab < aiState.buildings.length; ab++) {
+            if (aiState.buildings[ab].turnsRemaining <= 0) aiBuildings++;
+        }
+        stats.enemyBuildings = aiBuildings;
+        stats.enemyUnits = aiState.units ? aiState.units.length : 0;
+    }
+
+    return stats;
 }

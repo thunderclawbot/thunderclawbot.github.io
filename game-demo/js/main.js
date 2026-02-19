@@ -14,6 +14,7 @@ import { UNIT_TYPES, getUnitsForRace, canTrainUnit, trainUnit, createUnitMesh, g
 import { initAudio, playClick, playBuild, playTurnEnd, playEventNotification, playCombat, playVictory, playDefeat, playQuestComplete, startMusic, stopMusic, setSfxEnabled, setMusicEnabled, isMusicPlaying } from './sound.js';
 import { createTutorialState, getTutorialSteps, markTutorialShown, dismissTutorial, isTutorialComplete } from './tutorial.js';
 import { checkVictory, checkDefeat, collectStats } from './victory.js';
+import { createAIState, processAITurn, getAITownCenter, checkAIDefeated } from './ai-opponent.js';
 
 function init() {
     // Renderer
@@ -74,6 +75,10 @@ function init() {
     var gameState = null;
     var gameStartTime = null;
     var gameEnded = false;
+
+    // AI opponent state
+    var aiState = null;
+    var aiBuildingMeshes = new Map();
 
     // Tutorial state
     var tutorialState = null;
@@ -241,9 +246,13 @@ function init() {
         initBuildingHP(gameState);
         recalcPopulationCap(gameState);
 
+        // Initialize AI opponent
+        aiState = createAIState(race, selectedDifficulty, gridSize, hexData);
+
         // Setup input
         setupInputSystem();
         updateFogOfWar();
+        rebuildAIBuildingMeshes();
         showHUD();
 
         // Start music
@@ -275,6 +284,13 @@ function init() {
             storytellerState = createStorytellerState();
         }
 
+        // Restore or create AI state
+        if (gameState.aiOpponent) {
+            aiState = gameState.aiOpponent;
+        } else {
+            aiState = createAIState(gameState.race, gameState.difficulty, gridSize, hexData);
+        }
+
         tutorialState = createTutorialState();
         tutorialState.dismissed = true; // Skip tutorial on load
 
@@ -303,9 +319,22 @@ function init() {
             }
         }
 
+        // Rebuild AI building hex marks
+        if (aiState) {
+            for (var ai = 0; ai < aiState.buildings.length; ai++) {
+                var abld = aiState.buildings[ai];
+                var abKey = abld.q + ',' + abld.r;
+                var abHex = hexData.get(abKey);
+                if (abHex) {
+                    abHex.building = { type: abld.type, turnsRemaining: abld.turnsRemaining, level: abld.level || 1 };
+                }
+            }
+        }
+
         recalcPopulationCap(gameState);
         setupInputSystem();
         rebuildUnitMeshes();
+        rebuildAIBuildingMeshes();
         updateFogOfWar();
         showHUD();
         startMusic();
@@ -403,7 +432,7 @@ function init() {
     function checkGameEnd() {
         if (!gameState || gameEnded) return;
 
-        var victory = checkVictory(gameState, selectedDifficulty);
+        var victory = checkVictory(gameState, selectedDifficulty, aiState);
         if (victory) {
             gameEnded = true;
             playVictory();
@@ -425,7 +454,7 @@ function init() {
         gameOverTitle.className = 'game-over-title ' + (isVictory ? 'victory' : 'defeat');
         gameOverReason.textContent = reason;
 
-        var stats = collectStats(gameState, storytellerState, selectedDifficulty, gameStartTime);
+        var stats = collectStats(gameState, storytellerState, selectedDifficulty, gameStartTime, aiState);
 
         var html = '';
         var statRows = [
@@ -442,6 +471,12 @@ function init() {
             ['Events', stats.eventsExperienced],
             ['Total Resources', stats.totalResources],
         ];
+
+        if (stats.enemyRace) {
+            statRows.push(['Enemy Race', stats.enemyRace.charAt(0).toUpperCase() + stats.enemyRace.slice(1)]);
+            statRows.push(['Enemy Buildings', stats.enemyBuildings]);
+            statRows.push(['Enemy Units', stats.enemyUnits]);
+        }
 
         for (var i = 0; i < statRows.length; i++) {
             html += '<div class="stat-row"><span class="stat-label">' + statRows[i][0] + '</span><span class="stat-value">' + statRows[i][1] + '</span></div>';
@@ -471,7 +506,16 @@ function init() {
             });
             unitMeshes.clear();
 
+            // Clear AI building meshes
+            aiBuildingMeshes.forEach(function (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            aiBuildingMeshes.clear();
+
             gameState = null;
+            aiState = null;
             gameEnded = false;
             combatLogEntries = [];
             if (combatLogEl) combatLogEl.classList.remove('visible');
@@ -509,6 +553,7 @@ function init() {
 
         var visible = getVisibleHexes(gameState, hexData);
 
+        // Player units
         for (var i = 0; i < gameState.units.length; i++) {
             var unit = gameState.units[i];
             if (unit.turnsToReady > 0) continue;
@@ -521,6 +566,50 @@ function init() {
                 scene.add(mesh);
                 unitMeshes.set(key, mesh);
             }
+        }
+
+        // AI units — visible only when in player fog-of-war visible range
+        if (aiState && aiState.units) {
+            for (var j = 0; j < aiState.units.length; j++) {
+                var aiUnit = aiState.units[j];
+                if (aiUnit.turnsToReady > 0) continue;
+                var aiKey = aiUnit.q + ',' + aiUnit.r;
+
+                if (!visible.has(aiKey)) continue;
+
+                var aiMesh = createUnitMesh(aiUnit.type, aiUnit.q, aiUnit.r, aiState.race, 'ai');
+                if (aiMesh) {
+                    scene.add(aiMesh);
+                    unitMeshes.set('ai_' + aiKey, aiMesh);
+                }
+            }
+        }
+    }
+
+    function rebuildAIBuildingMeshes() {
+        // Clear existing AI building meshes
+        aiBuildingMeshes.forEach(function (mesh) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        });
+        aiBuildingMeshes.clear();
+
+        if (!aiState || !gameState) return;
+
+        var visible = getVisibleHexes(gameState, hexData);
+        var exploredSet = new Set(gameState.exploredHexes);
+
+        for (var i = 0; i < aiState.buildings.length; i++) {
+            var b = aiState.buildings[i];
+            var key = b.q + ',' + b.r;
+
+            // AI buildings visible only when explored by player
+            if (!exploredSet.has(key) && !visible.has(key)) continue;
+
+            var mesh = createBuildingMesh(b.type, b.q, b.r, b.turnsRemaining, b.level || 1, aiState.race);
+            scene.add(mesh);
+            aiBuildingMeshes.set(key, mesh);
         }
     }
 
@@ -543,7 +632,26 @@ function init() {
 
     function showMoveRange(unit) {
         clearMoveRange();
-        reachableHexes = getMovementRange(unit, hexData, gameState);
+
+        // Merge AI units into a combined state for movement range calc
+        var combinedState = { units: (gameState.units || []).slice() };
+        if (aiState && aiState.units) {
+            combinedState.units = combinedState.units.concat(aiState.units);
+        }
+        reachableHexes = getMovementRange(unit, hexData, combinedState);
+
+        // Also mark hexes with AI units as enemies
+        if (aiState && aiState.units) {
+            for (var ri = 0; ri < reachableHexes.length; ri++) {
+                if (reachableHexes[ri].hasEnemy) continue;
+                for (var ai = 0; ai < aiState.units.length; ai++) {
+                    if (aiState.units[ai].q === reachableHexes[ri].q && aiState.units[ai].r === reachableHexes[ri].r) {
+                        reachableHexes[ri].hasEnemy = true;
+                        break;
+                    }
+                }
+            }
+        }
 
         for (var i = 0; i < reachableHexes.length; i++) {
             var rh = reachableHexes[i];
@@ -626,11 +734,23 @@ function init() {
 
             if (isReachable) {
                 if (hasEnemy) {
+                    // Find defender in gameState.units or aiState.units
                     var defender = null;
+                    var defenderSource = null; // 'player' or 'ai'
                     for (var d = 0; d < gameState.units.length; d++) {
                         if (gameState.units[d].q === clickQ && gameState.units[d].r === clickR && gameState.units[d].owner !== selectedUnit.owner) {
                             defender = gameState.units[d];
+                            defenderSource = 'player';
                             break;
+                        }
+                    }
+                    if (!defender && aiState && aiState.units) {
+                        for (var ad = 0; ad < aiState.units.length; ad++) {
+                            if (aiState.units[ad].q === clickQ && aiState.units[ad].r === clickR) {
+                                defender = aiState.units[ad];
+                                defenderSource = 'ai';
+                                break;
+                            }
                         }
                     }
                     if (defender) {
@@ -651,8 +771,13 @@ function init() {
                         showToast('challenge', 'Combat', result.log, '');
 
                         if (defender.hp <= 0) {
-                            var defIdx = gameState.units.indexOf(defender);
-                            if (defIdx >= 0) gameState.units.splice(defIdx, 1);
+                            if (defenderSource === 'ai') {
+                                var aiDefIdx = aiState.units.indexOf(defender);
+                                if (aiDefIdx >= 0) aiState.units.splice(aiDefIdx, 1);
+                            } else {
+                                var defIdx = gameState.units.indexOf(defender);
+                                if (defIdx >= 0) gameState.units.splice(defIdx, 1);
+                            }
                             moveUnit(selectedUnit, clickQ, clickR, hexData);
                         } else if (selectedUnit.hp <= 0) {
                             var atkIdx = gameState.units.indexOf(selectedUnit);
@@ -663,10 +788,17 @@ function init() {
                     moveUnit(selectedUnit, clickQ, clickR, hexData);
                 }
 
+                // After movement, player unit attacks adjacent AI buildings
+                if (selectedUnit && selectedUnit.hp > 0 && aiState) {
+                    attackAdjacentAIBuildings(selectedUnit);
+                }
+
                 deselectUnit();
                 rebuildUnitMeshes();
+                rebuildAIBuildingMeshes();
                 updateFogOfWar();
                 drawMinimap();
+                checkGameEnd();
                 return true;
             }
         }
@@ -691,6 +823,58 @@ function init() {
         }
 
         return false;
+    }
+
+    // Attack adjacent AI buildings when player unit is nearby
+    function attackAdjacentAIBuildings(unit) {
+        if (!aiState) return;
+        var uDef = UNIT_TYPES[unit.type];
+        if (!uDef) return;
+
+        // Check hexes adjacent to the unit
+        var neighbors = [
+            { q: unit.q + 1, r: unit.r },
+            { q: unit.q - 1, r: unit.r },
+            { q: unit.q, r: unit.r + 1 },
+            { q: unit.q, r: unit.r - 1 },
+            { q: unit.q + 1, r: unit.r - 1 },
+            { q: unit.q - 1, r: unit.r + 1 },
+        ];
+        // Also check the unit's own hex
+        neighbors.push({ q: unit.q, r: unit.r });
+
+        for (var ni = 0; ni < neighbors.length; ni++) {
+            var n = neighbors[ni];
+            for (var bi = 0; bi < aiState.buildings.length; bi++) {
+                var ab = aiState.buildings[bi];
+                if (ab.q === n.q && ab.r === n.r && ab.turnsRemaining <= 0) {
+                    var damage = uDef.attack;
+                    if (ab.hp === undefined) {
+                        ab.hp = 50;
+                        ab.maxHp = 50;
+                    }
+                    ab.hp -= damage;
+                    var bName = BUILDING_TYPES[ab.type] ? BUILDING_TYPES[ab.type].name : ab.type;
+                    addCombatLog('Your ' + uDef.name + ' attacks enemy ' + bName + ' for ' + damage + ' damage');
+                    playCombat();
+
+                    if (ab.hp <= 0) {
+                        ab.hp = 0;
+                        addCombatLog('Enemy ' + bName + ' destroyed!');
+                        showToast('boon', 'Building Destroyed', 'You destroyed the enemy ' + bName + '!', '');
+
+                        // Remove building from hexData
+                        var abKey = ab.q + ',' + ab.r;
+                        var hex = hexData.get(abKey);
+                        if (hex) hex.building = null;
+
+                        // Remove from AI state
+                        aiState.buildings.splice(bi, 1);
+                    }
+                    return; // Only attack one building per move
+                }
+            }
+        }
     }
 
     // Find a valid hex near (cq, cr) for a building type
@@ -1411,6 +1595,36 @@ function init() {
             }
         }
 
+        // AI building and unit indicators on minimap
+        if (aiState && gameState) {
+            var exploredForMinimap = new Set(gameState.exploredHexes);
+            for (var abi = 0; abi < aiState.buildings.length; abi++) {
+                var abld = aiState.buildings[abi];
+                var abKey = abld.q + ',' + abld.r;
+                if (!exploredForMinimap.has(abKey)) continue;
+                var abx = abld.q * cellW;
+                var aby = abld.r * cellH;
+                ctx.fillStyle = '#ef4444';
+                var pad2 = cellW * 0.2;
+                ctx.fillRect(abx + pad2, aby + pad2, cellW - pad2 * 2, cellH - pad2 * 2);
+            }
+            if (aiState.units) {
+                var visibleForMinimap = getVisibleHexes(gameState, hexData);
+                for (var aui = 0; aui < aiState.units.length; aui++) {
+                    var aUnit = aiState.units[aui];
+                    if (aUnit.turnsToReady > 0) continue;
+                    var auKey = aUnit.q + ',' + aUnit.r;
+                    if (!visibleForMinimap.has(auKey)) continue;
+                    var aux = aUnit.q * cellW;
+                    var auy = aUnit.r * cellH;
+                    ctx.fillStyle = '#ef4444';
+                    ctx.beginPath();
+                    ctx.arc(aux + cellW / 2, auy + cellH / 2, cellW * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
         // Fog of war on minimap
         if (gameState) {
             var visible = getVisibleHexes(gameState, hexData);
@@ -1449,12 +1663,40 @@ function init() {
                 (maxR - minR + 1) * cellH + 2
             );
         }
+
+        // AI settlement extent border (red, only if explored)
+        if (aiState && gameState && aiState.buildings.length > 0) {
+            var exploredBounds = new Set(gameState.exploredHexes);
+            var aiMinQ = gridSize, aiMaxQ = 0, aiMinR = gridSize, aiMaxR = 0;
+            var hasExplored = false;
+            for (var ei = 0; ei < aiState.buildings.length; ei++) {
+                var eb = aiState.buildings[ei];
+                var ebKey = eb.q + ',' + eb.r;
+                if (!exploredBounds.has(ebKey)) continue;
+                hasExplored = true;
+                if (eb.q < aiMinQ) aiMinQ = eb.q;
+                if (eb.q > aiMaxQ) aiMaxQ = eb.q;
+                if (eb.r < aiMinR) aiMinR = eb.r;
+                if (eb.r > aiMaxR) aiMaxR = eb.r;
+            }
+            if (hasExplored) {
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(
+                    aiMinQ * cellW - 1,
+                    aiMinR * cellH - 1,
+                    (aiMaxQ - aiMinQ + 1) * cellW + 2,
+                    (aiMaxR - aiMinR + 1) * cellH + 2
+                );
+            }
+        }
     }
 
     // ── Save / Load ──
     saveBtn.addEventListener('click', function () {
         if (!gameState) return;
         if (storytellerState) gameState.storyteller = storytellerState;
+        if (aiState) gameState.aiOpponent = aiState;
         if (combatLogEntries.length > 0) gameState.combatLog = combatLogEntries;
         if (saveGame(gameState)) {
             playClick();
@@ -1473,6 +1715,13 @@ function init() {
                 mesh.material.dispose();
             });
             buildingMeshes.clear();
+
+            aiBuildingMeshes.forEach(function (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            aiBuildingMeshes.clear();
 
             unitMeshes.forEach(function (mesh) {
                 scene.remove(mesh);
@@ -1598,6 +1847,39 @@ function init() {
             }
 
             updateQuestPanel();
+            updateResourceBar();
+        }
+
+        // ── Process AI opponent turn ──
+        if (aiState) {
+            var aiResult = processAITurn(aiState, gameState, hexData);
+
+            // Show AI combat/action logs
+            for (var al = 0; al < aiResult.logs.length; al++) {
+                addCombatLog(aiResult.logs[al]);
+            }
+
+            // Show toast for significant AI events
+            if (aiResult.attacks.length > 0) {
+                showToast('challenge', 'Enemy Attack', 'The enemy forces are attacking!', aiResult.logs.slice(-1)[0] || '');
+            } else if (aiResult.builtBuildings.length > 0) {
+                // Only show if the building is in player's visible range
+                var aiVisible = getVisibleHexes(gameState, hexData);
+                var anyVisible = false;
+                for (var abi = 0; abi < aiState.buildings.length; abi++) {
+                    var abKey = aiState.buildings[abi].q + ',' + aiState.buildings[abi].r;
+                    if (aiVisible.has(abKey)) { anyVisible = true; break; }
+                }
+                if (anyVisible) {
+                    showToast('story', 'Enemy Activity', 'The enemy settlement is expanding.', '');
+                }
+            }
+
+            // Rebuild AI visual state
+            rebuildAIBuildingMeshes();
+            rebuildUnitMeshes();
+            updateFogOfWar();
+            drawMinimap();
             updateResourceBar();
         }
 
